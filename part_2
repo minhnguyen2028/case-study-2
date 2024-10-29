@@ -1,0 +1,108 @@
+%% Case Study 2: COVID Dynamic System
+%% Part 2: Fitting the SIRD Model to Real Data
+% *ESE 105*
+% 
+% *Names: Minh Duc Nguyen, Hussain Akbotabeekh, Shaaf Afzal*
+%
+
+clear;
+close all;
+load COVID_STL.mat;
+load mockdata.mat; 
+
+
+%% Step 1: Additional Vectors and Graph Analysis
+
+%%%
+% *******************************************************************
+% Creates difference data; rate at which cases increase from one day to 
+% the next (i.e. # of new cases per day), same with death count
+caseRate = zeros(size(cases_STL));
+for i = 2:(size(cases_STL, 2))
+    caseRate(i) = (cases_STL(i)-cases_STL(i-1))/POP_STL;
+end
+
+deathRate = zeros(size(deaths_STL));
+for i = 2:(size(deaths_STL, 2))
+    deathRate(i) = (deaths_STL(i)-deaths_STL(i-1))/POP_STL;
+end
+
+% Plots actual case data (for reference) 
+figure;
+plot(dates, cases_STL, "Color", 'green'); 
+hold on;
+plot(dates, deaths_STL, "Color", 'red');
+title("Actual STL Cases Data");
+xlabel("Time");
+ylabel("Total Count");
+legend('Measured Cases', 'Measured Deaths'); 
+hold off;
+
+% Plots derived rate data
+figure;
+plot(dates, caseRate, "Color", 'blue');
+hold on;
+plot(dates, deathRate, "Color", 'black');
+title("STL Case & Death Rate Data");
+xlabel("Time");
+ylabel("Total Count");
+legend('Daily Case Count Rate', 'Daily Death Rate');
+hold off;
+% *******************************************************************
+
+
+%% Step 2: Establlish SIRD Parameters and Tuning
+
+%%%
+% *******************************************************************
+% Set time range to first ~200 days (28 weeks) (for tuning/testing purposes)
+upperDate = 28;
+datesInitial = dates(1:upperDate);
+figure;
+plot(datesInitial, cases_STL(:, 1:upperDate), "Color", 'blue');
+hold on;
+plot(datesInitial, deaths_STL(:, 1:upperDate), "Color", 'red');
+hold off;
+
+% SIRD rate-constants (trial-and-error)
+S = 0.996;
+I = 0.0005;
+R = 0.0005;
+D = 0.003;
+
+% Initial conditions (trial-and-error)
+Si = 1;
+Ii = 0;
+Ri = 0;
+Di = 0;
+Xinitial = [Si ; Ii ; Ri ; Di];
+
+% Set up natural evolution matrix
+A = [1-I    0    0    0;
+      I   1-R-D  0    0;
+      0     R    1    0;
+      0     D    0    1];
+
+% lsim set up
+B = zeros(4, 1);
+
+% Here is a compact way to simulate a linear dynamical system.
+% Type 'help ss', 'help lsim', etc., to learn about how these functions work!!
+D = ss(A,B,eye(4),zeros(4,1),1);
+Y = (lsim(D,zeros(28,1),linspace(1, 28, 28),Xinitial)')*POP_STL;
+
+figure;
+plot(linspace(1, 28, 28), Y(2, :));
+hold on;
+plot(linspace(1, 28, 28), Y(4, :));
+plot(linspace(1, 28, 28), cases_STL(1:28));
+plot(linspace(1, 28, 28), deaths_STL(1:28));
+legend('I', 'D', 'Measured Cases', 'Measured Deaths');
+% *******************************************************************
+
+%% Step 3: Apply SIRD Model to Remaining Data
+
+%%%
+% *******************************************************************
+% code here
+% *******************************************************************
