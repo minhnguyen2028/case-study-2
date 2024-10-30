@@ -19,13 +19,17 @@ load mockdata.mat;
 % the next (i.e. # of new cases per day), same with death count
 caseRate = zeros(size(cases_STL));
 for i = 2:(size(cases_STL, 2))
-    caseRate(i) = (cases_STL(i)-cases_STL(i-1))/POP_STL;
+    caseRate(i) = cases_STL(i)-cases_STL(i-1);
 end
 
 deathRate = zeros(size(deaths_STL));
 for i = 2:(size(deaths_STL, 2))
-    deathRate(i) = (deaths_STL(i)-deaths_STL(i-1))/POP_STL;
+    deathRate(i) = deaths_STL(i)-deaths_STL(i-1);
 end
+
+% Smooths out rate data a bit
+caseRate = smoothdata(caseRate, 2, "movmean", 2);
+deathRate = smoothdata(deathRate, 2, "movmean", 2);
 
 % Plots actual case data (for reference) 
 figure;
@@ -55,20 +59,56 @@ hold off;
 
 %%%
 % *******************************************************************
-% Set time range to first ~200 days (28 weeks) (for tuning/testing purposes)
-upperDate = 28;
-datesInitial = dates(1:upperDate);
-figure;
-plot(datesInitial, cases_STL(:, 1:upperDate), "Color", 'blue');
-hold on;
-plot(datesInitial, deaths_STL(:, 1:upperDate), "Color", 'red');
-hold off;
+% Sets lower/upper time limit (for testing purposes)
+tLower = 1;
+tUpper = 100;
+tRegion = dates(tLower:tUpper);   % For plotting purposes
+tRegionNum = tLower:tUpper;   % For lsim purposes
+
+% Extra info: population over 2020-2023
+% St. Louis County:
+%   - 2020: 1,004,125
+%   - 2021: 1,002,000
+%   - 2022: 990,414
+%   - 2023: 987,059
+%
+% St. Louis City:
+%   - 2020: 301,578
+%   - 2021: 293,310
+%   - 2022: 286,578
+%   - 2023: 281,754
+%
+% Total STL Population (county + city):
+%   - 2020: 1,305,703
+%   - 2021: 1,295,310
+%   - 2022: 1,276,992
+%   - 2023: 1,268,813
+
+% Find cumulative population decline each year over the 4 years:
+pop4yr = [1305703 1295310 1276992 1268813];
+popDecline = zeros(1, 3);
+for i = 1:3
+    popDecline(i) = abs(pop4yr(i+1) - pop4yr(i));
+end
+
+% Spread out decline over a year (52 weeks) 
+popDeclineYear = zeros(1, size(dates, 2));
+popDeclineYear(1:52) = popDecline(1)/52;
+popDeclineYear(53:105) = popDecline(2)/52;
+popDeclineYear(106:158) = popDecline(3)/52;
+
+% Create adjusted population vector
+POP_STL_adjusted = zeros(1, size(dates, 2));
+POP_STL_adjusted(1) = POP_STL;
+for i = 2:size(POP_STL_adjusted, 2)
+    POP_STL_adjusted(i) = POP_STL_adjusted(i-1) - popDeclineYear(i);
+end
 
 % SIRD rate-constants (trial-and-error)
-S = 0.996;
-I = 0.0005;
-R = 0.0005;
-D = 0.003;
+S = 0.98;
+I = 0.0038;
+R = 0.0155;
+D = 0.00075;
 
 % Initial conditions (trial-and-error)
 Si = 1;
@@ -77,32 +117,55 @@ Ri = 0;
 Di = 0;
 Xinitial = [Si ; Ii ; Ri ; Di];
 
+% TESTING; not sure if needed or not
+% % Set up time-varying parameter vectors
+% beta = zeros(1, size(dates, 2));    % controls population 
+% gamma = zeros(1, size(dates, 2));   % controls infection parameter
+% delta = zeros(1, size(dates, 2));   % controls recovery parameter
+% alpha = zeros(1, size(dates, 2));   % controls death parameter
+% zeta = zeros(1, size(dates, 2));    % controls susceptibility parameter
+
 % Set up natural evolution matrix
-A = [1-I    0    0    0;
+A1 = [1-I    0    0    0;
       I   1-R-D  0    0;
       0     R    1    0;
       0     D    0    1];
 
-% lsim set up
+% Additional lsim set up + execution
 B = zeros(4, 1);
+D_sim = ss(A1,B,eye(4),zeros(4,1),1);
+Y = lsim(D_sim,zeros(size(tRegion, 2),1),tRegionNum, Xinitial)';
 
-% Here is a compact way to simulate a linear dynamical system.
-% Type 'help ss', 'help lsim', etc., to learn about how these functions work!!
-D = ss(A,B,eye(4),zeros(4,1),1);
-Y = (lsim(D,zeros(28,1),linspace(1, 28, 28),Xinitial)')*POP_STL;
+% Create vector for active cases 
+% (total cases - total deaths - total recovered)
+% recovered_STL = zeros(1, size(dates, 2));     % NOTE: fix this???
+% for i = 1:size(dates, 2)
+%     recovered_STL(i) = I*Y(2, i)
+% end
+
+casesActive = cases_STL - deaths_STL; %- recovered_STL;
+
 
 figure;
-plot(linspace(1, 28, 28), Y(2, :));
+plot(tRegion, Y(2, :));
 hold on;
-plot(linspace(1, 28, 28), Y(4, :));
-plot(linspace(1, 28, 28), cases_STL(1:28));
-plot(linspace(1, 28, 28), deaths_STL(1:28));
-legend('I', 'D', 'Measured Cases', 'Measured Deaths');
+plot(tRegion, Y(4, :));
+plot(tRegion, (casesActive(tLower:tUpper)./POP_STL_adjusted(tLower:tUpper)));
+plot(tRegion, (deaths_STL(tLower:tUpper)./POP_STL_adjusted(tLower:tUpper)));
+legend('I', 'D', 'Measured Cases (active)', 'Measured Deaths');
 % *******************************************************************
 
-%% Step 3: Apply SIRD Model to Remaining Data
+%% Step 3: Action Items
 
 %%%
 % *******************************************************************
-% code here
+% Set up varient time ranges
+timeDelta = dates(68:85);
+timeOmicron = dates(85:106);
+
+% Tuning based on delta varient (6/30/21 - 10/26/21)
+% uhhhh
+
+% Tuning based on Omicron varient (10/27/21 - 3/22/22)
+% uhhhhhhh
 % *******************************************************************
