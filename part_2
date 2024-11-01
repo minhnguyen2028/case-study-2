@@ -5,6 +5,9 @@
 % *Names: Minh Duc Nguyen, Hussain Akbotabeekh, Shaaf Afzal*
 %
 
+% FIX SIRD VALUES!!!! infected shouldn't keep increasing; should go down as
+% the cumulative curve goes flatter
+
 clear;
 close all;
 load COVID_STL.mat;
@@ -17,53 +20,19 @@ load mockdata.mat;
 % *******************************************************************
 % Creates difference data; rate at which cases increase from one day to 
 % the next (i.e. # of new cases per day), same with death count
-caseRate = zeros(size(cases_STL));
+weeklyNewCases = zeros(size(cases_STL));
 for i = 2:(size(cases_STL, 2))
-    caseRate(i) = cases_STL(i)-cases_STL(i-1);
+    weeklyNewCases(i) = cases_STL(i)-cases_STL(i-1);
 end
 
-deathRate = zeros(size(deaths_STL));
+weeklyNewDeaths = zeros(size(deaths_STL));
 for i = 2:(size(deaths_STL, 2))
-    deathRate(i) = deaths_STL(i)-deaths_STL(i-1);
+    weeklyNewDeaths(i) = deaths_STL(i)-deaths_STL(i-1);
 end
 
 % Smooths out rate data a bit
-caseRate = smoothdata(caseRate, 2, "movmean", 2);
-deathRate = smoothdata(deathRate, 2, "movmean", 2);
-
-% Plots actual case data (for reference) 
-figure;
-plot(dates, cases_STL, "Color", 'green'); 
-hold on;
-plot(dates, deaths_STL, "Color", 'red');
-title("Actual STL Cases Data");
-xlabel("Time");
-ylabel("Total Count");
-legend('Measured Cases', 'Measured Deaths'); 
-hold off;
-
-% Plots derived rate data
-figure;
-plot(dates, caseRate, "Color", 'blue');
-hold on;
-plot(dates, deathRate, "Color", 'black');
-title("STL Case & Death Rate Data");
-xlabel("Time");
-ylabel("Total Count");
-legend('Daily Case Count Rate', 'Daily Death Rate');
-hold off;
-% *******************************************************************
-
-
-%% Step 2: Establlish SIRD Parameters and Tuning
-
-%%%
-% *******************************************************************
-% Sets lower/upper time limit (for testing purposes)
-tLower = 1;
-tUpper = 100;
-tRegion = dates(tLower:tUpper);   % For plotting purposes
-tRegionNum = tLower:tUpper;   % For lsim purposes
+weeklyNewCases = smoothdata(weeklyNewCases, 2, "movmean", 2);
+weeklyNewDeaths = smoothdata(weeklyNewDeaths, 2, "movmean", 2);
 
 % Extra info: population over 2020-2023
 % St. Louis County:
@@ -71,13 +40,11 @@ tRegionNum = tLower:tUpper;   % For lsim purposes
 %   - 2021: 1,002,000
 %   - 2022: 990,414
 %   - 2023: 987,059
-%
 % St. Louis City:
 %   - 2020: 301,578
 %   - 2021: 293,310
 %   - 2022: 286,578
 %   - 2023: 281,754
-%
 % Total STL Population (county + city):
 %   - 2020: 1,305,703
 %   - 2021: 1,295,310
@@ -97,75 +64,273 @@ popDeclineYear(1:52) = popDecline(1)/52;
 popDeclineYear(53:105) = popDecline(2)/52;
 popDeclineYear(106:158) = popDecline(3)/52;
 
-% Create adjusted population vector
+% Create adjusted population vector; used to ensure a more accurate
+% population percentage value for the calculated SIRD values/curves
 POP_STL_adjusted = zeros(1, size(dates, 2));
 POP_STL_adjusted(1) = POP_STL;
 for i = 2:size(POP_STL_adjusted, 2)
     POP_STL_adjusted(i) = POP_STL_adjusted(i-1) - popDeclineYear(i);
 end
 
-% SIRD rate-constants (trial-and-error)
-S = 0.98;
-I = 0.0038;
-R = 0.0155;
-D = 0.00075;
+% Create a new cumulative cases vector as a percentage of the time-varying
+% total population; same w/ death vector
+cases_STL_percentage = cases_STL./POP_STL_adjusted;
+deaths_STL_percentage = deaths_STL./POP_STL_adjusted;
 
-% Initial conditions (trial-and-error)
-Si = 1;
-Ii = 0;
-Ri = 0;
-Di = 0;
-Xinitial = [Si ; Ii ; Ri ; Di];
+% Plots actual case data (for reference) 
+figure;
+plot(dates, cases_STL, "Color", 'blue'); 
+hold on;
+plot(dates, deaths_STL, "Color", 'red');
+title("Actual STL Cases Data");
+xlabel("Time");
+ylabel("Total Count");
+legend('Cumulative Cases', 'Cumulative Deaths'); 
+hold off;
 
-% TESTING; not sure if needed or not
-% % Set up time-varying parameter vectors
-% beta = zeros(1, size(dates, 2));    % controls population 
-% gamma = zeros(1, size(dates, 2));   % controls infection parameter
-% delta = zeros(1, size(dates, 2));   % controls recovery parameter
-% alpha = zeros(1, size(dates, 2));   % controls death parameter
-% zeta = zeros(1, size(dates, 2));    % controls susceptibility parameter
-
-% Set up natural evolution matrix
-A1 = [1-I    0    0    0;
-      I   1-R-D  0    0;
-      0     R    1    0;
-      0     D    0    1];
-
-% Additional lsim set up + execution
-B = zeros(4, 1);
-D_sim = ss(A1,B,eye(4),zeros(4,1),1);
-Y = lsim(D_sim,zeros(size(tRegion, 2),1),tRegionNum, Xinitial)';
-
-% Create vector for active cases 
-% (total cases - total deaths - total recovered)
-% recovered_STL = zeros(1, size(dates, 2));     % NOTE: fix this???
-% for i = 1:size(dates, 2)
-%     recovered_STL(i) = I*Y(2, i)
-% end
-
-casesActive = cases_STL - deaths_STL; %- recovered_STL;
-
+% Plots derived rate data
+figure;
+plot(dates, weeklyNewCases, "Color", 'blue');
+title("STL New Weekly Cases");
+xlabel("Time");
+ylabel("Total Count");
+legend('Weekly Case Count');
 
 figure;
-plot(tRegion, Y(2, :));
-hold on;
-plot(tRegion, Y(4, :));
-plot(tRegion, (casesActive(tLower:tUpper)./POP_STL_adjusted(tLower:tUpper)));
-plot(tRegion, (deaths_STL(tLower:tUpper)./POP_STL_adjusted(tLower:tUpper)));
-legend('I', 'D', 'Measured Cases (active)', 'Measured Deaths');
+plot(dates, weeklyNewDeaths, "Color", 'red');
+title("STL New Weekly Deaths");
+xlabel("Time");
+ylabel("Total Count");
+legend('Weekly Death Count');
 % *******************************************************************
 
-%% Step 3: Action Items
+
+%% Step 2: Establish SIRD Parameters and Tuning for Distinct Phases
 
 %%%
 % *******************************************************************
-% Set up varient time ranges
-timeDelta = dates(68:85);
-timeOmicron = dates(85:106);
+% Separate data into 4 distinct phases of the pandemic:
+%   - Phase 1: Initial Outbreak (3/18/20 - 6/23/21) (i = 1:67)
+%   - Phase 2: Delta Varient (6/30/21 - 10/20/21) (i = 68:84)
+%   - Phase 3: Omicron Varient (10/27/21 - 3/23/22) (i = 85:106)
+%   - Phase 4: Remaining Weeks (3/30/22 - 3/22/23) (i = 107:158)
+timeInitial = 1:1:67;           % For lsim purposes
+timeInitialWeeks = dates(1:67); % For plotting purposes
 
-% Tuning based on delta varient (6/30/21 - 10/26/21)
-% uhhhh
+timeDelta = 68:1:84;
+timeDeltaWeeks = dates(68:84);
 
-% Tuning based on Omicron varient (10/27/21 - 3/22/22)
-% uhhhhhhh
+timeOmicron = 85:1:106;
+timeOmicronWeeks = dates(85:106);
+
+timeRemain = 107:1:158;
+timeRemainWeeks = dates(107:158);
+
+% Set up SIRD rate-constants and initial values for the initial phase
+Si = 0.996;
+Ii = 0.002;
+Ri = 0.0017;
+Di = 0.0003;
+
+SiInit = 1;  % Assumes everyone is susceptible at the start; no cases yet
+IiInit = 0;
+RiInit = 0;
+DiInit = 0;
+XiInit = [SiInit; IiInit; RiInit; DiInit];
+
+% Phase 1: Initial outbreak
+% Set up natural evolution matrix A (base model; no additional states)
+Ai = [1-Ii    0     0     0;
+       Ii  1-Ri-Di  0     0;
+       0      Ri    1     0;
+       0      Di    0     1];
+
+% Other lsim matrices set up
+B = zeros(4, 1);
+Iden = eye(4);
+
+% lsim set up and execution
+Di = ss(Ai, B, Iden, B, 1);
+Yi = lsim(Di, zeros(size(timeInitial, 2), 1), timeInitial, XiInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_i = zeros(1, size(timeInitial, 2));
+for i = 1:size(timeInitial, 2) 
+    cum_i(i) = Yi(2, i) + Yi(3, i) + Yi(4, i);
+end
+
+% Plot the output matrix alongside the original cumulative count/death 
+% vector and the calculated cumulative cases vector for this phase
+figure; 
+hold on;
+plot(timeInitialWeeks, Yi(1, :), "Color", 'blue');
+plot(timeInitialWeeks, Yi(2, :), "Color", 'red');
+plot(timeInitialWeeks, Yi(3, :), "Color", '#588970');
+plot(timeInitialWeeks, Yi(4, :), "Color", 'black');
+plot(timeInitialWeeks, cum_i, "Color", 'cyan', "LineWidth", 1);
+plot(timeInitialWeeks, cases_STL_percentage(timeInitial), "Color", 'magenta', "LineStyle", "--");
+plot(timeInitialWeeks, deaths_STL_percentage(timeInitial), "Color", '#8B0000', "LineStyle", "--");
+legend('S', 'I', 'R', 'D', 'Cumulative Cases (model)', 'Cumulative Cases (actual)', 'Cumulative Deaths (actual)');
+title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves (PHASE 1)");
+xlabel("Time (weeks)");
+ylabel("Percentage of Total Population");
+
+% Repeat process for the other 4 phases:
+
+% Phase 2: Delta Varient
+% Set up SIRD rate-constants and initial values for the initial phase
+Sd = 0.99675;
+Id = 0.00175;
+Rd = 0.0012;
+Dd = 0.0003;
+% Initial values based on the final state vector of the previous phase
+SdInit = Yi(1, 67); 
+IdInit = Yi(2, 67);
+RdInit = Yi(3, 67);
+DdInit = Yi(4, 67);
+XdInit = [SdInit; IdInit; RdInit; DdInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ad = [1-Id    0     0     0;
+       Id  1-Rd-Dd  0     0;
+       0      Rd    1     0;
+       0      Dd    0     1];
+
+% lsim set up and execution
+Dd = ss(Ad, B, Iden, B, 1);
+Yd = lsim(Dd, zeros(size(timeDelta, 2), 1), timeDelta, XdInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_d = zeros(1, size(timeDelta, 2));
+for i = 1:size(timeDelta, 2) 
+    cum_d(i) = Yd(2, i) + Yd(3, i) + Yd(4, i);
+end
+
+% Plot the output matrix alongside the original cumulative count/death 
+% vector and the calculated cumulative cases vector for this phase
+figure; 
+hold on;
+plot(timeDeltaWeeks, Yd(1, :), "Color", 'blue');
+plot(timeDeltaWeeks, Yd(2, :), "Color", 'red');
+plot(timeDeltaWeeks, Yd(3, :), "Color", '#588970');
+plot(timeDeltaWeeks, Yd(4, :), "Color", 'black');
+plot(timeDeltaWeeks, cum_d, "Color", 'cyan', "LineWidth", 1);
+plot(timeDeltaWeeks, cases_STL_percentage(timeDelta), "Color", 'magenta', "LineStyle", "--");
+plot(timeDeltaWeeks, deaths_STL_percentage(timeDelta), "Color", '#8B0000', "LineStyle", "--");
+legend('S', 'I', 'R', 'D', 'Cumulative Cases (model)', 'Cumulative Cases (actual)', 'Cumulative Deaths (actual)');
+title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves (PHASE 2)");
+xlabel("Time (weeks)");
+ylabel("Percentage of Total Population");
+
+% Phase 3: Omicron Varient
+% Set up SIRD rate-constants and initial values for the initial phase
+So = 0.9924;
+Io = 0.0055;
+Ro = 0.0017;
+Do = 0.0004;
+% Initial values based on the final state vector of the previous phase
+SoInit = Yd(1, 17); 
+IoInit = Yd(2, 17);
+RoInit = Yd(3, 17);
+DoInit = Yd(4, 17);
+XoInit = [SoInit; IoInit; RoInit; DoInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ao = [1-Io    0     0     0;
+       Io  1-Ro-Do  0     0;
+       0      Ro    1     0;
+       0      Do    0     1];
+
+% lsim set up and execution
+Do = ss(Ao, B, Iden, B, 1);
+Yo = lsim(Do, zeros(size(timeOmicron, 2), 1), timeOmicron, XoInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_o = zeros(1, size(timeOmicron, 2));
+for i = 1:size(timeOmicron, 2) 
+    cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
+end
+
+% Plot the output matrix alongside the original cumulative count/death 
+% vector and the calculated cumulative cases vector for this phase
+figure; 
+hold on;
+plot(timeOmicronWeeks, Yo(1, :), "Color", 'blue');
+plot(timeOmicronWeeks, Yo(2, :), "Color", 'red');
+plot(timeOmicronWeeks, Yo(3, :), "Color", '#588970');
+plot(timeOmicronWeeks, Yo(4, :), "Color", 'black');
+plot(timeOmicronWeeks, cum_o, "Color", 'cyan', "LineWidth", 1);
+plot(timeOmicronWeeks, cases_STL_percentage(timeOmicron), "Color", 'magenta', "LineStyle", "--");
+plot(timeOmicronWeeks, deaths_STL_percentage(timeOmicron), "Color", '#8B0000', "LineStyle", "--");
+legend('S', 'I', 'R', 'D', 'Cumulative Cases (model)', 'Cumulative Cases (actual)', 'Cumulative Deaths (actual)');
+title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves (PHASE 3)");
+xlabel("Time (weeks)");
+ylabel("Percentage of Total Population");
+
+% Phase 4: Remaining Cases
+% Set up SIRD rate-constants and initial values for the initial phase
+Sr = 0.9952;
+Ir = 0.0022;
+Rr = 0.0024;
+Dr = 0.0002;
+% Initial values based on the final state vector of the previous phase
+SrInit = Yo(1, 22); 
+IrInit = Yo(2, 22);
+RrInit = Yo(3, 22);
+DrInit = Yo(4, 22);
+XrInit = [SrInit; IrInit; RrInit; DrInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ar = [1-Ir    0     0     0;
+       Ir  1-Rr-Dr  0     0;
+       0      Rr    1     0;
+       0      Dr    0     1];
+
+% lsim set up and execution
+Dr = ss(Ar, B, Iden, B, 1);
+Yr = lsim(Dr, zeros(size(timeRemain, 2), 1), timeRemain, XrInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_r = zeros(1, size(timeRemain, 2));
+for i = 1:size(timeRemain, 2) 
+    cum_r(i) = Yr(2, i) + Yr(3, i) + Yr(4, i);
+end
+
+% Plot the output matrix alongside the original cumulative count/death 
+% vector and the calculated cumulative cases vector for this phase
+figure; 
+hold on;
+plot(timeRemainWeeks, Yr(1, :), "Color", 'blue');
+plot(timeRemainWeeks, Yr(2, :), "Color", 'red');
+plot(timeRemainWeeks, Yr(3, :), "Color", '#588970');
+plot(timeRemainWeeks, Yr(4, :), "Color", 'black');
+plot(timeRemainWeeks, cum_r, "Color", 'cyan', "LineWidth", 1);
+plot(timeRemainWeeks, cases_STL_percentage(timeRemain), "Color", 'magenta', "LineStyle", "--");
+plot(timeRemainWeeks, deaths_STL_percentage(timeRemain), "Color", '#8B0000', "LineStyle", "--");
+legend('S', 'I', 'R', 'D', 'Cumulative Cases (model)', 'Cumulative Cases (actual)', 'Cumulative Deaths (actual)');
+title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves (PHASE 4)");
+xlabel("Time (weeks)");
+ylabel("Percentage of Total Population");
+
+% Concatenates output matrices together, then plots the result
+Ycat = cat(2, Yi, Yd, Yo, Yr);
+cum_concat = cat(2, cum_i, cum_d, cum_o, cum_r);
+
+figure; 
+hold on;
+plot(dates, Ycat(1, :), "Color", 'blue');
+plot(dates, Ycat(2, :), "Color", 'red');
+plot(dates, Ycat(3, :), "Color", '#588970');
+plot(dates, Ycat(4, :), "Color", 'black');
+plot(dates, cum_concat, "Color", 'cyan', "LineWidth", 1);
+plot(dates, cases_STL_percentage, "Color", 'magenta', "LineStyle", "--");
+plot(dates, deaths_STL_percentage, "Color", '#8B0000', "LineStyle", "--");
+legend('S', 'I', 'R', 'D', 'Cumulative Cases (model)', 'Cumulative Cases (actual)', 'Cumulative Deaths (actual)');
+title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves");
+xlabel("Time (weeks)");
+ylabel("Percentage of Total Population");
 % *******************************************************************
