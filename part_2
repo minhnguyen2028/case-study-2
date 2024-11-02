@@ -5,9 +5,6 @@
 % *Names: Minh Duc Nguyen, Hussain Akbotabeekh, Shaaf Afzal*
 %
 
-% FIX SIRD VALUES!!!! infected shouldn't keep increasing; should go down as
-% the cumulative curve goes flatter
-
 clear;
 close all;
 load COVID_STL.mat;
@@ -114,8 +111,8 @@ legend('Weekly Death Count');
 %   - Phase 2: Delta Varient (6/30/21 - 10/20/21) (i = 68:84)
 %   - Phase 3: Omicron Varient (10/27/21 - 3/23/22) (i = 85:106)
 %   - Phase 4: Remaining Weeks (3/30/22 - 3/22/23) (i = 107:158)
-timeInitial = 1:1:67;           % For lsim purposes
-timeInitialWeeks = dates(1:67); % For plotting purposes
+timeInitial = 1:1:67;             % For lsim purposes
+timeInitialWeeks = dates(1:67);   % For plotting purposes
 
 timeDelta = 68:1:84;
 timeDeltaWeeks = dates(68:84);
@@ -128,21 +125,18 @@ timeRemainWeeks = dates(107:158);
 
 % Set up SIRD rate-constants and initial values for the initial phase
 % Find active cases + averages: 
-% Recovered pop: assuming rec. time of 3 weeks (shift for 3-week delay) 
-recTime1 = 3;
+% Recovered pop: assuming rec. time of 4 weeks (shift for 4-week delay) 
+recTime1 = 4;
 weeklyRecovered1 = zeros(1, size(timeInitial, 2));
 for i = (recTime1+1):size(timeInitial, 2)
     weeklyRecovered1(i) = weeklyNewCases(i-recTime1) - weeklyNewDeaths(i-recTime1);
 end
-
 activeCases1 = cases_STL(timeInitial) - deaths_STL(timeInitial) - weeklyRecovered1; 
-
-newActiveCases1 =  weeklyNewCases(timeInitial) - weeklyNewDeaths(timeInitial) - weeklyRecovered1(timeInitial);
 weeklyNewActive1 = zeros(1, size(timeInitial, 2));
-for i = 2:67
-    weeklyNewActive1(i) = newActiveCases1(i) - newActiveCases1(i-1);
+for i = 2:size(timeInitial, 2)
+    weeklyNewActive1(i) = activeCases1(i) - activeCases1(i-1);
 end
-aveActiveCases1 = mean(cumsum(newActiveCases1));
+aveActiveCases1 = mean(activeCases1);
 aveWeeklyRecovered1 = mean(weeklyRecovered1);
    
 % Calculates parameters using the following logic (over phase 1): 
@@ -150,9 +144,9 @@ aveWeeklyRecovered1 = mean(weeklyRecovered1);
 %  - R = average recovered / average active cases
 %  - D = total deaths @ end of phase / average population
 %  - S = remainder; 1 - I - R - D 
-Ii = mean(weeklyNewCases(timeInitial))/mean(POP_STL_adjusted(1:67));
+Ii = mean(weeklyNewCases(timeInitial))/mean(POP_STL_adjusted(timeInitial));
 Ri = aveWeeklyRecovered1/aveActiveCases1;
-Di = deaths_STL(67)/mean(POP_STL_adjusted(1:67));
+Di = sum(weeklyNewDeaths(timeInitial))/mean(POP_STL_adjusted(timeInitial));
 Si = 1-Ii-Ri-Di;
 
 SiInit = 1;  % Assumes everyone is susceptible at the start; no cases yet
@@ -173,8 +167,8 @@ B = zeros(4, 1);
 Iden = eye(4);
 
 % lsim set up and execution
-Di = ss(Ai, B, Iden, B, 1);
-Yi = lsim(Di, zeros(size(timeInitial, 2), 1), timeInitial, XiInit)';
+D_i = ss(Ai, B, Iden, B, 1);
+Yi = lsim(D_i, zeros(size(timeInitial, 2), 1), timeInitial, XiInit)';
 
 % Get cumulative cases vector, calculated using:
 %   Cumulative Cases = Infected + Recovered + Deceased
@@ -207,25 +201,32 @@ ylabel("Percentage of Total Population");
 
 % Assumes recovery time ~3 weeks;
 recTime2 = 3;
-weeklyRecovered2 = weeklyNewCases(timeDelta(1):(timeDelta(end)-recTime2))-weeklyNewDeaths(timeDelta(1):(timeDelta(end)-recTime2));
-activeCases2 = cases_STL(timeDelta) - deaths_STL(timeDelta) - cat(2, zeros(1, recTime2), weeklyRecovered2);
+weeklyRecovered2 = zeros(1, size(timeDelta, 2));
+for i = (recTime2+1):size(timeDelta, 2)
+    weeklyRecovered2(i) = weeklyNewCases(timeDelta(i)-recTime2) - weeklyNewDeaths(timeDelta(i)-recTime2);
+end
+activeCases2 = cases_STL(timeDelta) - deaths_STL(timeDelta) - cumsum(weeklyRecovered2); 
 weeklyNewActive2 = zeros(1, size(timeDelta, 2));
 for i = 2:size(timeDelta, 2)
     weeklyNewActive2(i) = activeCases2(i) - activeCases2(i-1);
 end
 aveActiveCases2 = mean(activeCases2);
 aveWeeklyRecovered2 = mean(weeklyRecovered2);
-aveSusceptible2 = 0;  % find this
+% Calculates the susceptible population based on the average previous
+% population
+aveSusceptible2 = mean(Yi(1, :));
+aveInfected2 = mean(Yi(2, :));
 
-Id = mean()/mean(POP_STL_adjusted(1:67));  % HU
-Rd = 0.0012;
-Dd = 0.0003;
+Id = mean(weeklyNewCases(timeDelta))/((aveSusceptible2*mean(POP_STL_adjusted(timeDelta))));
+Rd = aveWeeklyRecovered2/aveActiveCases2;
+Dd = sum(weeklyNewDeaths(timeDelta))/mean(POP_STL_adjusted(timeDelta));
 Sd = 1-Id-Rd-Dd;
+
 % Initial values based on the final state vector of the previous phase
-SdInit = Yi(1, 67); 
-IdInit = Yi(2, 67);
-RdInit = Yi(3, 67);
-DdInit = Yi(4, 67);
+SdInit = Yi(1, size(Yi, 2)); 
+IdInit = Yi(2, size(Yi, 2));
+RdInit = Yi(3, size(Yi, 2));
+DdInit = Yi(4, size(Yi, 2));
 XdInit = [SdInit; IdInit; RdInit; DdInit];
 
 % Set up natural evolution matrix A (base model; no additional states)
@@ -235,8 +236,8 @@ Ad = [1-Id    0     0     0;
        0      Dd    0     1];
 
 % lsim set up and execution
-Dd = ss(Ad, B, Iden, B, 1);
-Yd = lsim(Dd, zeros(size(timeDelta, 2), 1), timeDelta, XdInit)';
+D_d = ss(Ad, B, Iden, B, 1);
+Yd = lsim(D_d, zeros(size(timeDelta, 2), 1), timeDelta, XdInit)';
 
 % Get cumulative cases vector, calculated using:
 %   Cumulative Cases = Infected + Recovered + Deceased
@@ -262,16 +263,34 @@ xlabel("Time (weeks)");
 ylabel("Percentage of Total Population");
 
 % Phase 3: Omicron Varient
-% Set up SIRD rate-constants and initial values for the initial phase
-So = 0.9924;
-Io = 0.0055;
-Ro = 0.0017;
-Do = 0.0004;
+% Assumes recovery time ~3 weeks;
+recTime3 = 3;
+weeklyRecovered3 = zeros(1, size(timeOmicron, 2));
+for i = (recTime3+1):size(timeOmicron, 2)
+    weeklyRecovered3(i) = weeklyNewCases(timeOmicron(i)-recTime3) - weeklyNewDeaths(timeOmicron(i)-recTime3);
+end
+activeCases3 = cases_STL(timeOmicron) - deaths_STL(timeOmicron) - cumsum(weeklyRecovered3); 
+weeklyNewActive3 = zeros(1, size(timeOmicron, 2));
+for i = 2:size(timeOmicron, 2)
+    weeklyNewActive3(i) = activeCases3(i) - activeCases3(i-1);
+end
+aveActiveCases3 = mean(activeCases3);
+aveWeeklyRecovered3 = mean(weeklyRecovered3);
+% Calculates the susceptible population based on the average previous
+% population
+aveSusceptible3 = mean(Yd(1, :));
+aveInfected3 = mean(Yd(2, :));
+
+Io = mean(weeklyNewCases(timeOmicron))/((aveSusceptible3*mean(POP_STL_adjusted(timeOmicron))));
+Ro = aveWeeklyRecovered3/aveActiveCases3;
+Do = sum(weeklyNewDeaths(timeOmicron))/mean(POP_STL_adjusted(timeOmicron));
+So = 1-Io-Ro-Do;
+
 % Initial values based on the final state vector of the previous phase
-SoInit = Yd(1, 17); 
-IoInit = Yd(2, 17);
-RoInit = Yd(3, 17);
-DoInit = Yd(4, 17);
+SoInit = Yd(1, size(Yd, 2)); 
+IoInit = Yd(2, size(Yd, 2));
+RoInit = Yd(3, size(Yd, 2));
+DoInit = Yd(4, size(Yd, 2));
 XoInit = [SoInit; IoInit; RoInit; DoInit];
 
 % Set up natural evolution matrix A (base model; no additional states)
@@ -281,8 +300,8 @@ Ao = [1-Io    0     0     0;
        0      Do    0     1];
 
 % lsim set up and execution
-Do = ss(Ao, B, Iden, B, 1);
-Yo = lsim(Do, zeros(size(timeOmicron, 2), 1), timeOmicron, XoInit)';
+D_o = ss(Ao, B, Iden, B, 1);
+Yo = lsim(D_o, zeros(size(timeOmicron, 2), 1), timeOmicron, XoInit)';
 
 % Get cumulative cases vector, calculated using:
 %   Cumulative Cases = Infected + Recovered + Deceased
@@ -308,16 +327,34 @@ xlabel("Time (weeks)");
 ylabel("Percentage of Total Population");
 
 % Phase 4: Remaining Cases
-% Set up SIRD rate-constants and initial values for the initial phase
-Sr = 0.9952;
-Ir = 0.0022;
-Rr = 0.0024;
-Dr = 0.0002;
+% Assumes recovery time ~2 weeks;
+recTime4 = 2;
+weeklyRecovered4 = zeros(1, size(timeRemain, 2));
+for i = (recTime4+1):size(timeRemain, 2)
+    weeklyRecovered4(i) = weeklyNewCases(timeRemain(i)-recTime4) - weeklyNewDeaths(timeRemain(i)-recTime4);
+end
+activeCases4 = cases_STL(timeRemain) - deaths_STL(timeRemain) - cumsum(weeklyRecovered4); 
+weeklyNewActive4 = zeros(1, size(timeRemain, 2));
+for i = 2:size(timeRemain, 2)
+    weeklyNewActive4(i) = activeCases4(i) - activeCases4(i-1);
+end
+aveActiveCases4 = mean(activeCases4);
+aveWeeklyRecovered4 = mean(weeklyRecovered4);
+% Calculates the susceptible population based on the average previous
+% population
+aveSusceptible4 = mean(Yo(1, :));
+aveInfected4 = mean(Yo(2, :));
+
+Ir = mean(weeklyNewCases(timeRemain))/((aveSusceptible4*mean(POP_STL_adjusted(timeRemain))));
+Rr = aveWeeklyRecovered4/aveActiveCases4;
+Dr = sum(weeklyNewDeaths(timeRemain))/mean(POP_STL_adjusted(timeRemain));
+Sr = 1-Ir-Rr-Dr;
+
 % Initial values based on the final state vector of the previous phase
-SrInit = Yo(1, 22); 
-IrInit = Yo(2, 22);
-RrInit = Yo(3, 22);
-DrInit = Yo(4, 22);
+SrInit = Yo(1, size(Yo, 2)); 
+IrInit = Yo(2, size(Yo, 2));
+RrInit = Yo(3, size(Yo, 2));
+DrInit = Yo(4, size(Yo, 2));
 XrInit = [SrInit; IrInit; RrInit; DrInit];
 
 % Set up natural evolution matrix A (base model; no additional states)
@@ -327,8 +364,8 @@ Ar = [1-Ir    0     0     0;
        0      Dr    0     1];
 
 % lsim set up and execution
-Dr = ss(Ar, B, Iden, B, 1);
-Yr = lsim(Dr, zeros(size(timeRemain, 2), 1), timeRemain, XrInit)';
+D_r = ss(Ar, B, Iden, B, 1);
+Yr = lsim(D_r, zeros(size(timeRemain, 2), 1), timeRemain, XrInit)';
 
 % Get cumulative cases vector, calculated using:
 %   Cumulative Cases = Infected + Recovered + Deceased
@@ -371,183 +408,3 @@ title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves");
 xlabel("Time (weeks)");
 ylabel("Percentage of Total Population");
 % *******************************************************************
-
-
-
-
-
-% 
-% figure;
-% % hold on;
-% % plot(tRegion, Y(1, :), "LineStyle", ":");
-% % plot(tRegion, Y(2, :));
-% % plot(tRegion, Y(3, :), "LineStyle", ":");
-% % plot(tRegion, Y(4, :));
-% % plot(tRegion, cases_STL(tLower:tUpper)./POP_STL_adjusted(tLower:tUpper), "LineWidth", 1);
-% % plot(tRegion, deaths_STL(tLower:tUpper)./POP_STL_adjusted(tLower:tUpper), "LineWidth", 1);
-% % legend('S', 'I', 'R', 'D', 'Measured Cases (total)', 'Measured Deaths (total)');
-% % title("Cumulative Case Counts + Deaths & IR Prediction Curves");
-% % xlabel("Time (weeks)");
-% % ylabel("Percentage of Total Population");
-
-
-
-
-
-
-% tLower = 1;
-% tUpper = 158;
-% tRegion = dates(tLower:tUpper);   % For plotting purposes
-% tRegionNum = tLower:tUpper;   % For lsim purposes
-
-% % SIRD rate-constants (entire duration; trial-and-error)
-% S = 0.992;
-% I = 0.0025;
-% R = 0.0053;
-% D = 0.0002;
-% 
-% % Initial conditions (entire duration; trial-and-error)
-% Si = 1;
-% Ii = 0;
-% Ri = 0;
-% Di = 0;
-% Xinitial = [Si ; Ii ; Ri ; Di];
-% 
-% % TESTING; not sure if needed or not
-% % Create vector for active cases 
-% % (total cases - total deaths - total recovered)
-% % recovered_STL = zeros(1, size(dates, 2));     % NOTE: fix this???
-% % for i = 1:size(dates, 2)
-% %     recovered_STL(i) = I*Y(2, i)
-% % end
-% % casesActive = (cases_STL - deaths_STL); %- recovered_STL;
-% 
-% % TESTING; not sure if needed or not
-% % % Set up time-varying parameter vectors
-% % beta = zeros(1, size(dates, 2));    % controls population 
-% % gamma = zeros(1, size(dates, 2));   % controls infection parameter
-% % delta = zeros(1, size(dates, 2));   % controls recovery parameter
-% % alpha = zeros(1, size(dates, 2));   % controls death parameter
-% % zeta = zeros(1, size(dates, 2));    % controls susceptibility parameter
-% 
-% % Set up natural evolution matrix
-% A1 = [1-I   0    0    0;
-%       I   1-R-D  0    0;
-%       0     R    1    0;
-%       0     D    0    1];
-% 
-% % Additional lsim set up + execution; focuses on matching prediction curves
-% % to the default unchanged cumulative case count/death data vectors for now
-% B = zeros(4, 1);
-% D_sim = ss(A1,B,eye(4),zeros(4,1),1);
-% Y = lsim(D_sim,zeros(size(tRegion, 2),1),tRegionNum, Xinitial)';
-% 
-% % Plots cumulative data vectors + SIRD curves of SIRD model
-% figure;
-% hold on;
-% plot(tRegion, Y(1, :), "LineStyle", ":");
-% plot(tRegion, Y(2, :));
-% plot(tRegion, Y(3, :), "LineStyle", ":");
-% plot(tRegion, Y(4, :));
-% plot(tRegion, cases_STL(tLower:tUpper)./POP_STL_adjusted(tLower:tUpper), "LineWidth", 1);
-% plot(tRegion, deaths_STL(tLower:tUpper)./POP_STL_adjusted(tLower:tUpper), "LineWidth", 1);
-% legend('S', 'I', 'R', 'D', 'Measured Cases (total)', 'Measured Deaths (total)');
-% title("Cumulative Case Counts + Deaths & IR Prediction Curves");
-% xlabel("Time (weeks)");
-% ylabel("Percentage of Total Population");
-% % *******************************************************************
-% 
-% %% Step 3: Action Items
-% 
-% %%%
-% % *******************************************************************
-% % Set up varient time ranges
-% % lsim vectors:
-% timeDelta = 68:1:85;
-% timeOmicron = 86:1:106;
-% % Plotting vectors:
-% timeDeltaDate = dates(68:85);
-% timeOmicronDate = dates(86:106);
-% 
-% % SIRD & initial tuning based on delta varient (6/30/21 - 10/26/21)
-% Sd = 0.9935;
-% Id = 0.0025;
-% Rd = 0.0035;
-% Dd = 0.0005;
-% 
-% Si_d = Y(1, 68) + 0.025;
-% Ii_d = Y(2, 68) - 0.025;
-% Ri_d = Y(3, 68);
-% Di_d = Y(4, 68);
-% XinitialDelta = [Si_d ; Ii_d ; Ri_d ; Di_d];
-% 
-% Ad = [1-Id    0    0    0;
-%       Id  1-Rd-Dd  0    0;
-%       0      Rd    1    0;
-%       0      Dd    0    1];
-% 
-% D_sim_delta = ss(Ad,B,eye(4),zeros(4,1),1);
-% Yd = lsim(D_sim_delta,zeros(size(timeDelta, 2),1),timeDelta, XinitialDelta)';
-% 
-% figure;
-% hold on;
-% plot(timeDeltaDate, Yd(1, :), "LineStyle", ":");
-% plot(timeDeltaDate, Yd(2, :));
-% plot(timeDeltaDate, Yd(3, :), "LineStyle", ":");
-% plot(timeDeltaDate, Yd(4, :));
-% plot(timeDeltaDate, cases_STL(68:85)./POP_STL_adjusted(68:85), "LineWidth", 1);
-% plot(timeDeltaDate, deaths_STL(68:85)./POP_STL_adjusted(68:85), "LineWidth", 1);
-% legend('S', 'I', 'R', 'D', 'Measured Cases (total)', 'Measured Deaths (total)');
-% title("Cumulative Case Counts + Deaths & SIRD Curves - Delta Varient");
-% xlabel("Time (weeks)");
-% ylabel("Percentage of Total Population");
-% 
-% % SIRD & initial tuning based on Omicron varient (10/27/21 - 3/22/22)
-% So = 0.95;
-% Io = 0.02;
-% Ro = 0.025;
-% Do = 0.005;
-% 
-% Si_o = Y(1, 86);
-% Ii_o = Y(2, 86);
-% Ri_o = Y(3, 86);
-% Di_o = Y(4, 86);
-% XinitialOmicron = [Si_o ; Ii_o ; Ri_o ; Di_o];
-% 
-% Ao = [1-Io    0    0    0;
-%       Io  1-Ro-Do  0    0;
-%       0      Ro    1    0;
-%       0      Do    0    1];
-% 
-% D_sim_omicron = ss(Ad,B,eye(4),zeros(4,1),1);
-% Yo = lsim(D_sim_omicron,zeros(size(timeOmicron, 2),1),timeOmicron, XinitialOmicron)';
-% 
-% figure;
-% hold on;
-% plot(timeOmicronDate, Yo(1, :), "LineStyle", ":");
-% plot(timeOmicronDate, Yo(2, :));
-% plot(timeOmicronDate, Yo(3, :), "LineStyle", ":");
-% plot(timeOmicronDate, Yo(4, :));
-% plot(timeOmicronDate, cases_STL(86:106)./POP_STL_adjusted(86:106), "LineWidth", 1);
-% plot(timeOmicronDate, deaths_STL(86:106)./POP_STL_adjusted(86:106), "LineWidth", 1);
-% legend('S', 'I', 'R', 'D', 'Measured Cases (total)', 'Measured Deaths (total)');
-% title("Cumulative Case Counts + Deaths & SIRD Curves - Omicron Varient");
-% xlabel("Time (weeks)");
-% ylabel("Percentage of Total Population");
-% 
-% % Concatenates output matrices and plots them
-% Ydo = cat(2, Yd, Yo);
-% 
-% figure;
-% hold on;
-% plot(dates(68:106), Ydo(1, :), "LineStyle", ":");
-% plot(dates(68:106), Ydo(2, :));
-% plot(dates(68:106), Ydo(3, :), "LineStyle", ":");
-% plot(dates(68:106), Ydo(4, :));
-% plot(dates(68:106), cases_STL(68:106)./POP_STL_adjusted(68:106), "LineWidth", 1);
-% plot(dates(68:106), deaths_STL(68:106)./POP_STL_adjusted(68:106), "LineWidth", 1);
-% legend('S', 'I', 'R', 'D', 'Measured Cases (total)', 'Measured Deaths (total)');
-% title("Cumulative Case Counts + Deaths & SIRD Curves - Delta and Omicron Varient Combined");
-% xlabel("Time (weeks)");
-% ylabel("Percentage of Total Population");
-% % *******************************************************************
