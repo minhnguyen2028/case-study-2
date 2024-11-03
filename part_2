@@ -306,7 +306,7 @@ YoTotal = zeros(4, size(timeOmicron, 2));
 
 % Subphase A:
 % SIRD parameters
-Io = mean(weeklyNewCases(timeOmicronA)/sPop3(timeAIndex));
+Io = mean(weeklyNewCases(timeOmicronA)/sPop3(timeAIndex)) + 0.002;
 Ro = mean(weeklyRecovered3(timeAIndex)/iPop3(timeAIndex));
 Do = mean(weeklyNewDeaths(timeOmicronA)/iPop3(timeAIndex));
 So = 1-Io-Ro-Do;
@@ -335,12 +335,13 @@ for i = 1:size(timeOmicronA, 2)
     cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
 end
 
+IoA = Io;
 cum_o_total(timeAIndex) = cum_o;
 YoTotal(:, timeAIndex) = Yo;
 
 % Subphase B:
 % SIRD parameters
-Io = mean(weeklyNewCases(timeOmicronB)/sPop3(timeBIndex));
+Io = mean(weeklyNewCases(timeOmicronB)/sPop3(timeBIndex)) + 0.001;
 Ro = mean(weeklyRecovered3(timeBIndex)/iPop3(timeBIndex));
 Do = mean(weeklyNewDeaths(timeOmicronB)/iPop3(timeBIndex));
 So = 1-Io-Ro-Do;
@@ -369,6 +370,7 @@ for i = 1:size(timeOmicronB, 2)
     cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
 end
 
+IoB = Io;
 cum_o_total(timeBIndex) = cum_o;
 YoTotal(:, timeBIndex) = Yo;
 
@@ -403,6 +405,7 @@ for i = 1:size(timeOmicronC, 2)
     cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
 end
 
+IoC = Io;
 cum_o_total(timeCIndex) = cum_o;
 cum_o = cum_o_total;
 YoTotal(:, timeCIndex) = Yo;
@@ -444,8 +447,8 @@ sPop4 = POP_STL_adjusted(timeRemain) - cases_STL(timeRemain);
 % Infected population:
 iPop4 = POP_STL_adjusted(timeRemain) - sPop4 - deaths_STL(timeRemain);
 
-Ir = mean(weeklyNewCases(timeRemain)/sPop4);
-Rr = mean(weeklyRecovered4/iPop4);
+Ir = mean(weeklyNewCases(timeRemain)/sPop4) - 0.0005;
+Rr = mean(weeklyRecovered4/iPop4) + 0.07;
 Dr = mean(weeklyNewDeaths(timeRemain)/iPop4);
 Sr = 1-Ir-Rr-Dr;
 
@@ -507,4 +510,55 @@ legend('S', 'I', 'R', 'D', 'Cumulative Cases (model)', 'Cumulative Cases (actual
 title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves");
 xlabel("Time (weeks)");
 ylabel("Percentage of Total Population");
+% *******************************************************************
+
+% Analysis of Delta and Omicron models:
+% *******************************************************************
+% i) In general, it seems that the delta phase is characterized by an 
+% overall more linear and constant SIRD behavior; the cumulative cases 
+% during this phase increase at a very consistent rate (demonstrated by the 
+% straighter cumulative cases curve), which in return results in the 
+% infection (I) and recovered (R) curves also behaving very linearly. 
+% Comparatively, the omicron model is characterized by a significant spike 
+% in new cases near January 2022, resulting in the infection and recovery 
+% curves also changing significantly. In this case, both curves show an 
+% increased slope (rate of change) near January 2022, with the recovery 
+% flattening off up still positive afterwards while the infection curve 
+% switches direction and starts heading downward (negative slope). 
+% Additionally, for the I and R parameter values themselves, the I value 
+% for delta was 0.0018, while the average I value for the three subphases 
+% of omicron was 0.0203. Considering how much greater I_omicron was 
+% compared to I_delta, it's strongly suggests that the COVID virus had a 
+% significantly greater rate of propagation during the omicron phase than 
+% the delta phase, which correlates with the cumulative case data and 
+% weekly new cases data during both phases.
+%
+% ii) The different behaviors between the two phases/models strongly
+% suggests some change in policy. Considering the increased rate of new
+% cases during the omicron phase (~January 2022 - February 2022), it seems
+% that COVID policies might've been more relaxed or not enforced during
+% this short time period, resulting in an influx in new COVID cases and,
+% accordingly, sudden increased populations of infected and recovered. The
+% fact that the cumulative cases curve goes somewhat back to normal
+% (flattens out) after February 2022 suggests that these relaxed policies
+% might have been enforced again, resulting in lowered COVID propagation
+% and, thus, less new cases. 
+% *******************************************************************
+
+%% Step 3: "What If?" Analysis
+
+
+%%% 
+% *******************************************************************
+% Plots new cases and deaths data for reference
+figure;
+plot(timeOmicronWeeks, weeklyNewCases(timeOmicron));
+xlabel("Time");
+ylabel("New Cases");
+title("Weekly Cases During Omicron Phase");
+figure;
+plot(timeOmicronWeeks, weeklyNewDeaths(timeOmicron));
+xlabel("Time");
+ylabel("New Deaths");
+title("Weekly Deaths During Omicron Phase");
 % *******************************************************************
