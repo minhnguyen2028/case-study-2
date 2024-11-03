@@ -113,26 +113,22 @@ legend('Weekly Death Count');
 %   - Phase 4: Remaining Weeks (3/30/22 - 3/22/23) (i = 107:158)
 timeInitial = 1:1:67;             % For lsim purposes
 timeInitialWeeks = dates(1:67);   % For plotting purposes
-% Subphases (cumul. cases curve changes significantly during main phase):
-timeInitialA = 1:32;  % 3/18/20 - 10/21/20
-timeInitialB = 33:47; % 10/28/20 - 2/3/21
-timeInitialC = 48:67; % 2/10/21 - 6/23/21 
 
 timeDelta = 68:1:84;
 timeDeltaWeeks = dates(68:84);
 
 timeOmicron = 85:1:106;
 timeOmicronWeeks = dates(85:106);
-% Subphases:
+% Subphases (b/c cumul. cases rate changes significantly during main phase):
 timeOmicronA = 85:93;   % 10/27/21 - 12/22/21
+    timeAIndex = 1:9;
 timeOmicronB = 94:99;   % 12/29/21 - 2/2/22
+    timeBIndex = 10:15;
 timeOmicronC = 100:106; % 2/9/22 - 3/23/22
+    timeCIndex = 16:22;
 
 timeRemain = 107:1:158;
 timeRemainWeeks = dates(107:158);
-% Subphases:
-timeRemainA = 107:126; % 3/30/22 - 8/10/22
-timeRemainB = 127:158; % 8/17/22 - 3/22/23
 
 % Phase 1: Initial Outbreak
 % Set up SIRD rate-constants and initial values for the initial phase
@@ -209,6 +205,8 @@ title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves (PHASE
 xlabel("Time (weeks)");
 ylabel("Percentage of Total Population");
 
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 % Repeat process for the other 4 phases:
 
 % Phase 2: Delta Varient
@@ -279,6 +277,8 @@ title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves (PHASE
 xlabel("Time (weeks)");
 ylabel("Percentage of Total Population");
 
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 % Phase 3: Omicron Varient
 % Assumes recovery time ~2 weeks;
 recTime3 = 2;
@@ -300,10 +300,15 @@ sPop3 = POP_STL_adjusted(timeOmicron) - cases_STL(timeOmicron);
 % Infected population:
 iPop3 = POP_STL_adjusted(timeOmicron) - sPop3 - deaths_STL(timeOmicron);
 
+% Set up cumulative cases vector + concatenated output matrix
+cum_o_total = zeros(1, size(timeOmicron, 2));
+YoTotal = zeros(4, size(timeOmicron, 2));
+
+% Subphase A:
 % SIRD parameters
-Io = mean(weeklyNewCases(timeOmicron)/sPop3);
-Ro = mean(weeklyRecovered3/iPop3);
-Do = mean(weeklyNewDeaths(timeOmicron)/iPop3);
+Io = mean(weeklyNewCases(timeOmicronA)/sPop3(timeAIndex));
+Ro = mean(weeklyRecovered3(timeAIndex)/iPop3(timeAIndex));
+Do = mean(weeklyNewDeaths(timeOmicronA)/iPop3(timeAIndex));
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -321,14 +326,87 @@ Ao = [1-Io    0     0     0;
 
 % lsim set up and execution
 D_o = ss(Ao, B, Iden, B, 1);
-Yo = lsim(D_o, zeros(size(timeOmicron, 2), 1), timeOmicron, XoInit)';
+Yo = lsim(D_o, zeros(size(timeOmicronA, 2), 1), timeOmicronA, XoInit)';
 
 % Get cumulative cases vector, calculated using:
 %   Cumulative Cases = Infected + Recovered + Deceased
-cum_o = zeros(1, size(timeOmicron, 2));
-for i = 1:size(timeOmicron, 2) 
+cum_o = zeros(1, size(timeOmicronA, 2));
+for i = 1:size(timeOmicronA, 2) 
     cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
 end
+
+cum_o_total(timeAIndex) = cum_o;
+YoTotal(:, timeAIndex) = Yo;
+
+% Subphase B:
+% SIRD parameters
+Io = mean(weeklyNewCases(timeOmicronB)/sPop3(timeBIndex));
+Ro = mean(weeklyRecovered3(timeBIndex)/iPop3(timeBIndex));
+Do = mean(weeklyNewDeaths(timeOmicronB)/iPop3(timeBIndex));
+So = 1-Io-Ro-Do;
+
+% Initial values based on the final state vector of the previous phase
+SoInit = Yo(1, size(Yo, 2)); 
+IoInit = Yo(2, size(Yo, 2));
+RoInit = Yo(3, size(Yo, 2));
+DoInit = Yo(4, size(Yo, 2));
+XoInit = [SoInit; IoInit; RoInit; DoInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ao = [1-Io    0     0     0;
+       Io  1-Ro-Do  0     0;
+       0      Ro    1     0;
+       0      Do    0     1];
+
+% lsim set up and execution
+D_o = ss(Ao, B, Iden, B, 1);
+Yo = lsim(D_o, zeros(size(timeOmicronB, 2), 1), timeOmicronB, XoInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_o = zeros(1, size(timeOmicronB, 2));
+for i = 1:size(timeOmicronB, 2) 
+    cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
+end
+
+cum_o_total(timeBIndex) = cum_o;
+YoTotal(:, timeBIndex) = Yo;
+
+% Subphase C:
+% SIRD parameters
+Io = mean(weeklyNewCases(timeOmicronC)/sPop3(timeCIndex));
+Ro = mean(weeklyRecovered3(timeCIndex)/iPop3(timeCIndex));
+Do = mean(weeklyNewDeaths(timeOmicronC)/iPop3(timeCIndex));
+So = 1-Io-Ro-Do;
+
+% Initial values based on the final state vector of the previous phase
+SoInit = Yo(1, size(Yo, 2)); 
+IoInit = Yo(2, size(Yo, 2));
+RoInit = Yo(3, size(Yo, 2));
+DoInit = Yo(4, size(Yo, 2));
+XoInit = [SoInit; IoInit; RoInit; DoInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ao = [1-Io    0     0     0;
+       Io  1-Ro-Do  0     0;
+       0      Ro    1     0;
+       0      Do    0     1];
+
+% lsim set up and execution
+D_o = ss(Ao, B, Iden, B, 1);
+Yo = lsim(D_o, zeros(size(timeOmicronC, 2), 1), timeOmicronC, XoInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_o = zeros(1, size(timeOmicronC, 2));
+for i = 1:size(timeOmicronC, 2) 
+    cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
+end
+
+cum_o_total(timeCIndex) = cum_o;
+cum_o = cum_o_total;
+YoTotal(:, timeCIndex) = Yo;
+Yo = YoTotal;
 
 % Plot the output matrix alongside the original cumulative count/death 
 % vector and the calculated cumulative cases vector for this phase
@@ -344,6 +422,8 @@ legend('I', 'R', 'D', 'Cumulative Cases (model)', 'Cumulative Cases (actual)', '
 title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves (PHASE 3)");
 xlabel("Time (weeks)");
 ylabel("Percentage of Total Population");
+
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 % Phase 4: Remaining Cases
 % Assumes recovery time ~2 weeks;
@@ -407,6 +487,8 @@ legend('I', 'R', 'D', 'Cumulative Cases (model)', 'Cumulative Cases (actual)', '
 title("Cumulative Case and Death Counts vs. SIRD Model Projections Curves (PHASE 4)");
 xlabel("Time (weeks)");
 ylabel("Percentage of Total Population");
+
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 % Concatenates output matrices together, then plots the result
 Ycat = cat(2, Yi, Yd, Yo, Yr);
