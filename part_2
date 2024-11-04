@@ -122,10 +122,12 @@ timeOmicronWeeks = dates(84:106);
 % Subphases (b/c cumul. cases rate changes significantly during main phase):
 timeOmicronA = 84:93;   % 10/27/21 - 12/22/21
     timeAIndex = 1:10;
-timeOmicronB = 93:99;   % 12/29/21 - 2/2/22
-    timeBIndex = 10:16;
-timeOmicronC = 99:106; % 2/9/22 - 3/23/22
-    timeCIndex = 16:23;
+timeOmicronB = 93:95; % 12/29/21 - 1/12/22
+    timeBIndex = 10:12;
+timeOmicronC = 95:99;   % 1/12/22 - 2/2/22
+    timeCIndex = 12:16;
+timeOmicronD = 99:106; % 2/9/22 - 3/23/22
+    timeDIndex = 16:23;
 
 timeRemain = 106:1:158;
 timeRemainWeeks = dates(106:158);
@@ -156,9 +158,10 @@ iPop1 = cases_STL(timeInitial) - deaths_STL(timeInitial) - totalRecovered1;
 %  - R = average of new recoveries / infected population
 %  - D = average of new deaths / infected population
 %  - S = remainder; 1 - I - R - D 
+% Note: manual adjustment made to the D variable to increase model accuracy
 Ii = mean(weeklyNewCases(timeInitial)./sPop1);
 Ri = mean(weeklyRecovered1./iPop1);
-Di = mean(weeklyNewDeaths(timeInitial)./iPop1);
+Di = mean(weeklyNewDeaths(timeInitial)./iPop1) - 0.004;
 Si = 1-Ii-Ri-Di;
     
 SiInit = 1;  % Assumes everyone is susceptible at the start; no cases yet
@@ -229,9 +232,10 @@ sPop2 = POP_STL_adjusted(timeDelta) - cases_STL(timeDelta);
 iPop2 = cases_STL(timeDelta) - deaths_STL(timeDelta) - totalRecovered2;
 
 % SIRD parameters
-Id = mean(weeklyNewCases(timeDelta)./sPop2);
-Rd = mean(weeklyRecovered2./iPop2);
-Dd = mean(weeklyNewDeaths(timeDelta)/iPop2);
+% Note: manual adjustment made to the I, D variable to increase model accuracy
+Id = mean(weeklyNewCases(timeDelta)./sPop2) + 0.0003;
+Rd = mean(weeklyRecovered2./iPop2) + 0.0025;
+Dd = mean(weeklyNewDeaths(timeDelta)/iPop2) + 0.0001;
 Sd = 1-Id-Rd-Dd;
 
 % Initial values based on the final state vector of the previous phase
@@ -300,9 +304,10 @@ YoTotal = zeros(4, size(timeOmicron, 2));
 
 % Subphase A:
 % SIRD parameters
-Io = mean(weeklyNewCases(timeOmicronA)/sPop3(timeAIndex));
-Ro = mean(weeklyRecovered3(timeAIndex)/iPop3(timeAIndex));
-Do = mean(weeklyNewDeaths(timeOmicronA)/iPop3(timeAIndex));
+% Note: manual adjustment made to I, R, D variables to increase model accuracy 
+Io = mean(weeklyNewCases(timeOmicronA)/sPop3(timeAIndex)) + 0.0003;
+Ro = mean(weeklyRecovered3(timeAIndex)/iPop3(timeAIndex)) + 0.003;
+Do = mean(weeklyNewDeaths(timeOmicronA)/iPop3(timeAIndex)) + 0.0003;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -335,9 +340,10 @@ YoTotal(:, timeAIndex) = Yo;
 
 % Subphase B:
 % SIRD parameters
-Io = mean(weeklyNewCases(timeOmicronB)/sPop3(timeBIndex));
+% Note: manually adjusted I, D variable to more accurately model data
+Io = mean(weeklyNewCases(timeOmicronB)/sPop3(timeBIndex)) + 0.001;
 Ro = mean(weeklyRecovered3(timeBIndex)/iPop3(timeBIndex));
-Do = mean(weeklyNewDeaths(timeOmicronB)/iPop3(timeBIndex));
+Do = mean(weeklyNewDeaths(timeOmicronB)/iPop3(timeBIndex)) + 0.001;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -370,9 +376,10 @@ YoTotal(:, timeBIndex) = Yo;
 
 % Subphase C:
 % SIRD parameters
-Io = mean(weeklyNewCases(timeOmicronC)/sPop3(timeCIndex));
+% Note: manually adjusted I, D variables to more accurately model data
+Io = mean(weeklyNewCases(timeOmicronC)/sPop3(timeCIndex)) + 0.001;
 Ro = mean(weeklyRecovered3(timeCIndex)/iPop3(timeCIndex));
-Do = mean(weeklyNewDeaths(timeOmicronC)/iPop3(timeCIndex));
+Do = mean(weeklyNewDeaths(timeOmicronC)/iPop3(timeCIndex)) + 0.0001;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -401,8 +408,44 @@ end
 
 IoC = Io;
 cum_o_total(timeCIndex) = cum_o;
-cum_o = cum_o_total;
 YoTotal(:, timeCIndex) = Yo;
+
+% Subphase D:
+% SIRD parameters
+% Note: manually adjusted I variables to more accurately model data
+Io = mean(weeklyNewCases(timeOmicronD)/sPop3(timeDIndex)) - 0.001;
+Ro = mean(weeklyRecovered3(timeDIndex)/iPop3(timeDIndex));
+Do = mean(weeklyNewDeaths(timeOmicronD)/iPop3(timeDIndex));
+So = 1-Io-Ro-Do;
+
+% Initial values based on the final state vector of the previous phase
+SoInit = Yo(1, size(Yo, 2)); 
+IoInit = Yo(2, size(Yo, 2));
+RoInit = Yo(3, size(Yo, 2));
+DoInit = Yo(4, size(Yo, 2));
+XoInit = [SoInit; IoInit; RoInit; DoInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ao = [1-Io    0     0     0;
+       Io  1-Ro-Do  0     0;
+       0      Ro    1     0;
+       0      Do    0     1];
+
+% lsim set up and execution
+D_o = ss(Ao, B, Iden, B, 1);
+Yo = lsim(D_o, zeros(size(timeOmicronD, 2), 1), timeOmicronD, XoInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_o = zeros(1, size(timeOmicronD, 2));
+for i = 1:size(timeOmicronD, 2) 
+    cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
+end
+
+IoD = Io;
+cum_o_total(timeDIndex) = cum_o;
+cum_o = cum_o_total;
+YoTotal(:, timeDIndex) = Yo;
 Yo = YoTotal;
 
 % Plot the output matrix alongside the original cumulative count/death 
@@ -439,10 +482,8 @@ sPop4 = POP_STL_adjusted(timeRemain) - cases_STL(timeRemain);
 % Infected population:
 iPop4 = cases_STL(timeRemain) - deaths_STL(timeRemain) - totalRecovered4;
 
-% Note: manual adjustments were made to produce a more accurate I and R
-% behavior that more accurately reflects the actual data
-Ir = mean(weeklyNewCases(timeRemain)/sPop4) - 0.0005; % Manual adjustment
-Rr = mean(weeklyRecovered4/iPop4) + 0.07; % Manual adjustment 
+Ir = mean(weeklyNewCases(timeRemain)/sPop4);
+Rr = mean(weeklyRecovered4/iPop4); 
 Dr = mean(weeklyNewDeaths(timeRemain)/iPop4);
 Sr = 1-Ir-Rr-Dr;
 
@@ -542,4 +583,258 @@ disp("Error Between Model and Actual Cumulative Cases: " + (error*100) + "%");
 % (flattens out) after February 2022 suggests that these relaxed policies
 % might have been enforced again, resulting in lowered COVID propagation
 % and, thus, less new cases. 
+% *******************************************************************
+
+%% Step 3: "What If?" Analysis
+
+
+%%% 
+% *******************************************************************
+% Note: it is impossible to achieve a 25% reduced final cumulative death
+% count by the end of the Omicron phase, due to the fact that the target
+% cumulative count (3036 deaths) is lower than the starting cumulative
+% count 3136; as such, achieving a 25% reduction would require the D curve
+% to have a negative slope, which is impossible (as deceased individuals 
+% can't come back to life). As such, the goal will be to reduce the 
+% number of weekly new cases and deaths by an average of 25%
+
+% Policy: Effective 10/20/2021...
+%  *Enforced mask mandate w/ major budget increase allocated towards 
+%   supplying healthcare resources and facilities
+%   - Quaratine/curfew --> 6.85% decreased infection rates (I)
+%   - More healthcare --> 25% increased successful recovery rate (R)
+%       -  More resources --> 10% decreased fatality rate (D)
+Ipol = 0.9315;
+Rpol = 1.25;
+Dpol = 0.90;
+
+% Implementation (same code as above):
+
+% Subphase A:
+% SIRD parameters
+% Subphase A:
+% SIRD parameters
+% Note: manual adjustment made to I, R, D variables to increase model accuracy 
+Io = (mean(weeklyNewCases(timeOmicronA)/sPop3(timeAIndex)) + 0.0003)*Ipol;
+Ro = (mean(weeklyRecovered3(timeAIndex)/iPop3(timeAIndex)) + 0.003)*Rpol;
+Do = (mean(weeklyNewDeaths(timeOmicronA)/iPop3(timeAIndex)) + 0.0003)*Dpol;
+So = 1-Io-Ro-Do;
+% Initial values based on the final state vector of the previous phase
+SoInit = Yd(1, size(Yd, 2)); 
+IoInit = Yd(2, size(Yd, 2));
+RoInit = Yd(3, size(Yd, 2));
+DoInit = Yd(4, size(Yd, 2));
+XoInit = [SoInit; IoInit; RoInit; DoInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ao = [1-Io    0     0     0;
+       Io  1-Ro-Do  0     0;
+       0      Ro    1     0;
+       0      Do    0     1];
+
+% lsim set up and execution
+D_o = ss(Ao, B, Iden, B, 1);
+Yo = lsim(D_o, zeros(size(timeOmicronA, 2), 1), timeOmicronA, XoInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_o = zeros(1, size(timeOmicronA, 2));
+for i = 1:size(timeOmicronA, 2) 
+    cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
+end
+
+IoA = Io;
+cum_o_total(timeAIndex) = cum_o;
+YoTotal(:, timeAIndex) = Yo;
+
+% Subphase B:
+% SIRD parameters
+% Note: manually adjusted I, D variable to more accurately model data
+Io = (mean(weeklyNewCases(timeOmicronB)/sPop3(timeBIndex)) + 0.001)*Ipol;
+Ro = mean(weeklyRecovered3(timeBIndex)/iPop3(timeBIndex))*Rpol;
+Do = (mean(weeklyNewDeaths(timeOmicronB)/iPop3(timeBIndex)) + 0.001)*Dpol;
+So = 1-Io-Ro-Do;
+
+% Initial values based on the final state vector of the previous phase
+SoInit = Yo(1, size(Yo, 2)); 
+IoInit = Yo(2, size(Yo, 2));
+RoInit = Yo(3, size(Yo, 2));
+DoInit = Yo(4, size(Yo, 2));
+XoInit = [SoInit; IoInit; RoInit; DoInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ao = [1-Io    0     0     0;
+       Io  1-Ro-Do  0     0;
+       0      Ro    1     0;
+       0      Do    0     1];
+
+% lsim set up and execution
+D_o = ss(Ao, B, Iden, B, 1);
+Yo = lsim(D_o, zeros(size(timeOmicronB, 2), 1), timeOmicronB, XoInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_o = zeros(1, size(timeOmicronB, 2));
+for i = 1:size(timeOmicronB, 2) 
+    cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
+end
+
+IoB = Io;
+cum_o_total(timeBIndex) = cum_o;
+YoTotal(:, timeBIndex) = Yo;
+
+% Subphase C:
+% SIRD parameters
+% Note: manually adjusted I variables to more accurately model data
+Io = (mean(weeklyNewCases(timeOmicronC)/sPop3(timeCIndex)) + 0.001)*Ipol;
+Ro = mean(weeklyRecovered3(timeCIndex)/iPop3(timeCIndex))*Rpol;
+Do = (mean(weeklyNewDeaths(timeOmicronC)/iPop3(timeCIndex))+0.0001)*Dpol;
+So = 1-Io-Ro-Do;
+
+% Initial values based on the final state vector of the previous phase
+SoInit = Yo(1, size(Yo, 2)); 
+IoInit = Yo(2, size(Yo, 2));
+RoInit = Yo(3, size(Yo, 2));
+DoInit = Yo(4, size(Yo, 2));
+XoInit = [SoInit; IoInit; RoInit; DoInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ao = [1-Io    0     0     0;
+       Io  1-Ro-Do  0     0;
+       0      Ro    1     0;
+       0      Do    0     1];
+
+% lsim set up and execution
+D_o = ss(Ao, B, Iden, B, 1);
+Yo = lsim(D_o, zeros(size(timeOmicronC, 2), 1), timeOmicronC, XoInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_o = zeros(1, size(timeOmicronC, 2));
+for i = 1:size(timeOmicronC, 2) 
+    cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
+end
+
+IoC = Io;
+cum_o_total(timeCIndex) = cum_o;
+YoTotal(:, timeCIndex) = Yo;
+
+% Subphase D:
+% SIRD parameters
+% Note: manually adjusted I variables to more accurately model data
+Io = (mean(weeklyNewCases(timeOmicronD)/sPop3(timeDIndex)) - 0.001)*Ipol;
+Ro = mean(weeklyRecovered3(timeDIndex)/iPop3(timeDIndex))*Rpol;
+Do = mean(weeklyNewDeaths(timeOmicronD)/iPop3(timeDIndex))*Dpol;
+So = 1-Io-Ro-Do;
+
+% Initial values based on the final state vector of the previous phase
+SoInit = Yo(1, size(Yo, 2)); 
+IoInit = Yo(2, size(Yo, 2));
+RoInit = Yo(3, size(Yo, 2));
+DoInit = Yo(4, size(Yo, 2));
+XoInit = [SoInit; IoInit; RoInit; DoInit];
+
+% Set up natural evolution matrix A (base model; no additional states)
+Ao = [1-Io    0     0     0;
+       Io  1-Ro-Do  0     0;
+       0      Ro    1     0;
+       0      Do    0     1];
+
+% lsim set up and execution
+D_o = ss(Ao, B, Iden, B, 1);
+Yo = lsim(D_o, zeros(size(timeOmicronD, 2), 1), timeOmicronD, XoInit)';
+
+% Get cumulative cases vector, calculated using:
+%   Cumulative Cases = Infected + Recovered + Deceased
+cum_o = zeros(1, size(timeOmicronD, 2));
+for i = 1:size(timeOmicronD, 2) 
+    cum_o(i) = Yo(2, i) + Yo(3, i) + Yo(4, i);
+end
+
+IoD = Io;
+cum_o_total(timeDIndex) = cum_o;
+cum_o = cum_o_total.*POP_STL_adjusted(timeOmicron);
+YoTotal(:, timeDIndex) = Yo;
+Yo = YoTotal.*POP_STL_adjusted(timeOmicron);
+totalDeaths = Yo(4, :);
+weeklyNewCasesPolicy = zeros(1, size(timeOmicron, 2));
+weeklyNewCasesPolicy(1) = weeklyNewCases(timeOmicron(1));
+for i = 2:size(timeOmicron, 2)
+    weeklyNewCasesPolicy(i) = cum_o(i) - cum_o(i-1);
+end
+weeklyNewDeathsPolicy = zeros(1, size(timeOmicron, 2));
+weeklyNewDeathsPolicy(1) = weeklyNewDeaths(timeOmicron(1)); 
+for i = 2:size(timeOmicron, 2)
+    weeklyNewDeathsPolicy(i) = totalDeaths(i) - totalDeaths(i-1);
+end
+
+% Compare actual cumulative cases/deaths plot with design outcomes
+figure;
+hold on;
+plot(timeOmicronWeeks, cases_STL(timeOmicron), "Color", 'red', "LineStyle", ':');
+plot(timeOmicronWeeks, cum_o, "Color", '#8B0000', "LineWidth", 1);
+xlabel("Time");
+ylabel("Total Cases");
+title("Cumulative Omicron Cases: Actual vs Policy");
+figure;
+hold on;
+plot(timeOmicronWeeks, deaths_STL(timeOmicron), "Color", 'blue', "LineStyle", ':');
+plot(timeOmicronWeeks, totalDeaths, "Color", '#00008B', "LineWidth", 1);
+xlabel("Time");
+ylabel("Total Deaths");
+title("Cumulative Omicron Deaths: Actual vs Policy");
+
+% Compare actual new weekly cases/deaths data with design outcomes
+figure;
+hold on;
+plot(timeOmicronWeeks, weeklyNewCases(timeOmicron), "Color", 'red', "LineStyle", ':');
+plot(timeOmicronWeeks, weeklyNewCasesPolicy, "Color", '#8B0000', "LineWidth", 1);
+xlabel("Time");
+ylabel("New Cases");
+title("Weekly Cases During Omicron Phase: Actual vs Policy");
+figure;
+hold on;
+plot(timeOmicronWeeks, weeklyNewDeaths(timeOmicron), "Color", 'blue', "LineStyle", ':');
+plot(timeOmicronWeeks, weeklyNewDeathsPolicy, "Color", '#00008B', "LineWidth", 1);
+xlabel("Time");
+ylabel("New Deaths");
+title("Weekly Deaths During Omicron Phase: Actual vs Policy");
+
+% Determine average reduction percentage
+deathsReduc = mean((weeklyNewDeaths(timeOmicron)-weeklyNewDeathsPolicy)./weeklyNewDeaths(timeOmicron));
+casesReduc = mean((weeklyNewCases(timeOmicron)-weeklyNewCasesPolicy)./weeklyNewDeaths(timeOmicron));
+disp("Policy reduced deaths by " + deathsReduc*100 + "%");
+disp("Policy reduced cases by " + casesReduc*100 + "%");
+% *******************************************************************
+
+% Analysis of Policy: 
+% *******************************************************************
+% After trying out various different combinations, we settled on a policy 
+% that reduced the infection rate parameter by 6.85%, increased the recovery
+% rate parameter by 25%, and decreased the fatality rate parameter by 10%.
+% This combinationed yielded an approximate 25% reduction in both weekly
+% new cases and weekly new deaths, satisfying the goal of an overall 25%
+% reduction in cases and deaths during the Omnicron phase. To provide
+% some context, we created a scenario where these changes may have been
+% possible, settling on a combination of an enforced mask mandate
+% along with a county-wide budget increase for healthcare
+% facilities. Implementation of these policies was done through multiplying
+% the I, R, and D parameters in each subphase with the established
+% percentage increases/decreases, effectively "applying" the policy to the
+% Omnicron phase. 
+%
+% Based on existing literature, the funding of healthcare facilities and
+% resources seems plausible, as many states and counties received recovery
+% funds from the federal government (including St. Louis) during this 
+% time; thus, there shouldn't be any major concerns or financial strain to
+% implement better, more stocked healthcare facilities. Additionally,
+% enforcing a mask mandate would also be very financially friendly; 
+% however, whether people participate or not would play a major role, as a
+% mask mandate would only be effective if most or all of the population
+% follows it. Assuming that most do, however, a mask mandate would and has
+% been proven to be effective, being able to reduce transmission rate by
+% well over 6.85%. As such, our implemented policy seems plausible and,
+% based on our constructed model, would achieve the goal of a 25% reduction
+% in cases and deaths (assuming we are referring to weekly new cases and
+% deaths) during the Omicron phase. 
 % *******************************************************************
