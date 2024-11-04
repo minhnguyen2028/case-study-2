@@ -1,0 +1,50 @@
+%% Case Study 2: COVID Dynamic System
+%% Part 3: Modeling Vaccination and Competition
+% *ESE 105*
+% 
+% *Names: Minh Duc Nguyen, Hussain Akbotabeekh, Shaaf Afzal*
+%
+
+clear;
+close all;
+load mockdata.mat; 
+
+
+%% Step 1: Additional Vectors and Graph Analysis
+
+%%%
+% *******************************************************************
+% Create simple date vector
+days = 1:400;
+
+% Plot provided data for reference
+figure;
+plot(days, newInfections, "Color", '#3F95CD');
+hold on;
+plot(days, cumulativeDeaths, "Color", '#DE6937');
+legend('New Infections', 'Cumulative Deaths');
+title("Mock COVID Data");
+xlabel("Days");
+ylabel("Fraction of Total Population");
+
+% Create new daily deaths vector + plot for reference
+% NOTE: maybe not useful??????
+dailyDeaths = zeros(1, size(cumulativeDeaths, 2));
+for i = 2:size(cumulativeDeaths, 2)
+    dailyDeaths(i) = cumulativeDeaths(i) - cumulativeDeaths(i-1);
+end
+
+figure;
+plot(days, dailyDeaths, "Color", 'red');
+% *******************************************************************
+
+
+%% Step 2: Parameters/Rates Calculations and Set Up
+
+%%%
+% *******************************************************************
+
+% *******************************************************************
+
+
+%% Step 3: 
