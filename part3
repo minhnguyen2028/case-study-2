@@ -16,35 +16,322 @@ load mockdata.mat;
 % *******************************************************************
 % Create simple date vector
 days = 1:400;
+% Based on data behavior, day 140 is selected as the start of when vaccines
+% were made available (based on the declining cumulative deaths and new
+% daily infections)
+vacStart = 140;
+days1 = days(1):days(vacStart-1);    % Split into additional subphases
+    days1a = 1:115;   % Flattish region
+    days1b = 115:139;    % Sudden upward curve
+days2 = days(vacStart-1):days(end);
 
-% Plot provided data for reference
+% Smooth out noisy data; enough to cancel out fuzziness while still
+% maintaining the general curve shape
+cumulativeDeathsSmooth = smoothdata(cumulativeDeaths, 2, "gaussian", "omitmissing", "SmoothingFactor", 0.07);
+newInfectionsSmooth = smoothdata(newInfections, 2, "gaussian", "omitmissing", "SmoothingFactor", 0.07);
+% Zeros out any negative new infections entries
+for i = 1:size(days, 2) 
+    if newInfectionsSmooth(i) < 0
+        newInfectionsSmooth(i) = 0;
+    end
+end
+
+% Plot smoothed (and original) data for reference
 figure;
-plot(days, newInfections, "Color", '#3F95CD');
 hold on;
-plot(days, cumulativeDeaths, "Color", '#DE6937');
-legend('New Infections', 'Cumulative Deaths');
+plot(days, newInfectionsSmooth, "Color", '#3F95CD', "LineWidth", 1);
+plot(days, newInfections, "Color", '#ADD8E6');
+plot(days, cumulativeDeathsSmooth, "Color", '#DE6937', "LineWidth", 1);
+plot(days, cumulativeDeaths, "Color", '#FFB6C1');
+legend('New Infections (smooth)', 'New Infections (original)', 'Cumulative Deaths (smooth)', 'Cumulative Deaths (original)');
 title("Mock COVID Data");
 xlabel("Days");
 ylabel("Fraction of Total Population");
 
 % Create new daily deaths vector + plot for reference
-% NOTE: maybe not useful??????
-dailyDeaths = zeros(1, size(cumulativeDeaths, 2));
-for i = 2:size(cumulativeDeaths, 2)
-    dailyDeaths(i) = cumulativeDeaths(i) - cumulativeDeaths(i-1);
+newDeaths = zeros(1, size(cumulativeDeathsSmooth, 2));
+for i = 2:size(cumulativeDeathsSmooth, 2)
+    newDeaths(i) = cumulativeDeathsSmooth(i) - cumulativeDeathsSmooth(i-1);
+end
+% Smooths + removes negative values (can't have negative death rates)
+newDeaths = smoothdata(newDeaths, 2, "gaussian", "omitmissing", "SmoothingFactor", 0.08);
+for i = 1:size(days, 2)
+    if newDeaths(i) < 0
+        newDeaths(i) = 0;
+    end
 end
 
+% Create cumulative infections vector
+cumulativeInfections = zeros(1, size(days, 2));
+cumulativeInfections(1) = 0;
+for i = 2:size(days, 2)
+    cumulativeInfections(i) = cumulativeInfections(i-1) + newInfections(i);
+end
+
+% Plot new derived data
 figure;
-plot(days, dailyDeaths, "Color", 'red');
+plot(days, newDeaths, "Color", 'red');
+title("New Daily Fatalities");
+xlabel("Time");
+ylabel("Percentage of Population")
+figure;
+plot(days, cumulativeInfections, "Color", '#06402B');
+title("Cumulative Infections");
+xlabel("Time");
+ylabel("Percentage of Population");
 % *******************************************************************
 
 
-%% Step 2: Parameters/Rates Calculations and Set Up
+%% Step 2: Parameters/Rates Calculations and Set Up: Pre-vaccine
 
 %%%
 % *******************************************************************
+% Set up base SIRD parameters supporting data (same methodology as in part 2)
+% Phase 1: pre-vaccination
+recTime1 = 4;  % Recovery period of 4 weeks for unvaxxed; moderate-severe cases
+totalRecoveries1 = zeros(1, size(days1, 2));
+for i = recTime1+1:size(days1, 2)
+    totalRecoveries1(i) = totalRecoveries1(i-1) + newInfectionsSmooth(i-recTime1) - newDeaths(i-recTime1);
+end
+newRecoveries = zeros(1, size(days1, 2));
+for i = 2:size(days1, 2)
+    newRecoveries(i) = totalRecoveries1(i) - totalRecoveries1(i-1);
+end
+sPop1 = 1 - cumulativeInfections(days1);
+iPop1 = cumulativeInfections(days1) - cumulativeDeathsSmooth(days1) - totalRecoveries1;
+iPop1(1) = 0.004;  % Manual adjustment, since iPop1(1) was a negative value
 
+% Two new state variables: V (vaccinated), B (breakthrough infection):
+%   - V: percentage of population at time t that are vaccinated
+%        - Based on susceptible (S) and recovered (R) populations (infected
+%          individuals cannot receive a vaccine dose)
+%   - B: percentage of population at time t that are experiencing a
+%        breakthrough infection 
+%        - Based on vaccinated (V) population 
+%        - Sends a certain percentage of vaccinated people directly to the
+%          infected (I) population 
+% Additional new factors/parameters:
+%   - Ry: recovered w/ immunity --> cannot get sick again
+%   - Rn: recovered w/o immunity --> goes back to susceptible population
+%       - Rate based on CDC journal: unvaccinated individuals 2.34 times 
+%         more likely to get reinfected than vaccinated individuals
+% {https://www.cdc.gov/mmwr/volumes/70/wr/mm7032e1.htm?ACSTrackingID=USCDC_
+% 921-DM63289&ACSTrackingLabel=MMWR%20Early%20Release%20-%20Vol.%2070%2C%20
+% August%206%2C%202021&deliveryName=USCDC_921-DM63289}
+
+% Subphase 1
+Ytot = zeros(6, size(days1, 2));
+
+I = mean(newInfectionsSmooth(days1a)./sPop1(days1a));
+R = mean(newRecoveries(days1a)./iPop1(days1a));
+    reinRatio = 2.4;   % Likelihood of reinfection of unvaxxed vs vaxxed
+    Ry = R/reinRatio;   
+    Rn = R-Ry;
+D = mean(newDeaths(days1a)./iPop1(days1a))- 0.008; % Manual adjustment
+V = 0.00; 
+B = 0.00;
+S = 1 - I - R - D - V - B;
+
+
+% Set up initial values 
+Si = 0.994;
+Ii = 0.0042;
+Ri = 0;
+Di = 0.0018;
+Vi = 0;
+Bi = 0;
+
+Xinit = [Si Ii Ri Di Vi Bi];
+
+% Natural evolution matrix set up (V and B states are inactive)
+A = [1-I-V   Rn     0     0     0     0;     % Susceptible Population
+       I    1-R-D   0     0     0     B      % Infected Population
+       0     Ry     1     0     0    Ry      % Recovered Population
+       0      D     0     1     0     0      % Deceased Population
+       V      0     0     0    1-B    0      % Vaccinated Population
+       0      0     0     0     B    1-Ry];  % Breakthrough Infected Population
+
+% Other lsim set up
+Bsim = zeros(6, 1);
+Iden = eye(6);
+
+% lsim set up and execution
+Dsim = ss(A, Bsim, Iden, Bsim, 1);
+Y = lsim(Dsim, zeros(size(days1a, 2), 1), days1a, Xinit)';
+
+% Plot output model curves
+figure;
+hold on;
+plot(days1a, Y(2, :), "Color", 'red');
+plot(days1a, Y(4, :), "Color", 'black');
+plot(days1a, newInfectionsSmooth(days1a), "Color", 'green', "LineStyle", ":");
+plot(days1a, cumulativeDeathsSmooth(days1a), "Color", 'blue', "LineStyle", ":");
+legend('I', 'D', 'Measured I', 'Measured D')
+
+Ytot(:, days1a) = Y;
+
+% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+% Subphase 2
+% Manual adjustments made to improve accuracy
+I = mean(newInfectionsSmooth(days1b)./sPop1(days1b))-0.03;
+R = mean(newRecoveries(days1b)./iPop1(days1b));
+    reinRatio = 2.34;   % Likelihood of reinfection of unvaxxed vs vaxxed
+    Ry = R/reinRatio;   
+    Rn = R-Ry;
+D = mean(newDeaths(days1b)./iPop1(days1b))-0.013;
+V = 0.00; 
+B = 0.00;
+S = 1 - I - R - D - V - B;
+
+% Set up initial values 
+Si = Y(1, end);
+Ii = Y(2, end);
+Ri = Y(3, end);
+Di = Y(4, end);
+Vi = Y(5, end);
+Bi = Y(6, end);
+
+Xinit = [Si Ii Ri Di Vi Bi];
+
+% Natural evolution matrix set up (V and B states are inactive)
+A = [1-I-V   Rn     0     0     0     0;     % Susceptible Population
+       I    1-R-D   0     0     0     B      % Infected Population
+       0     Ry     1     0     0    Ry      % Recovered Population
+       0      D     0     1     0     0      % Deceased Population
+       V      0     0     0    1-B    0      % Vaccinated Population
+       0      0     0     0     B    1-Ry];  % Breakthrough Infected Population
+
+% Other lsim set up
+Bsim = zeros(6, 1);
+Iden = eye(6);
+% lsim set up and execution
+Dsim = ss(A, Bsim, Iden, Bsim, 1);
+Y = lsim(Dsim, zeros(size(days1b, 2), 1), days1b, Xinit)';
+
+% Plot output model curves
+figure;
+hold on;
+plot(days1b, Y(2, :), "Color", 'red');
+plot(days1b, Y(4, :), "Color", 'black');
+plot(days1b, newInfectionsSmooth(days1b), "Color", 'green', "LineStyle", ":");
+plot(days1b, cumulativeDeathsSmooth(days1b), "Color", 'blue', "LineStyle", ":");
+legend('I', 'D', 'Measured I', 'Measured D')
+
+Ytot(:, (days1b(1)+1):days1b(end)) = Y(:, 2:end);
+Y = Ytot;
+
+% Plot combined outputs
+figure;
+hold on;
+plot(days1, Y(2, :), "Color", 'red');
+plot(days1, Y(4, :), "Color", 'black');
+plot(days1, newInfectionsSmooth(days1), "Color", 'green', "LineStyle", ":");
+plot(days1, cumulativeDeathsSmooth(days1), "Color", 'blue', "LineStyle", ":");
+legend('I', 'D', 'Measured I', 'Measured D')
+
+% Plot all parameters + original data
+figure;
+hold on;
+plot(days1, Y(1, :), "Color", 'green');
+plot(days1, Y(2, :), "Color", 'red');
+plot(days1, Y(3, :), "Color", 'blue');
+plot(days1, Y(4, :), "Color", 'black');
+plot(days1, Y(5, :), "Color", 'cyan');
+plot(days1, Y(6, :), "Color", 'yellow');
+plot(days1, newInfectionsSmooth(days1), "LineStyle", ":");
+plot(days1, cumulativeDeathsSmooth(days1), "LineStyle", ":");
+legend('S', 'I', 'R', 'D', 'V', 'B', 'Measured I', 'Measured D');
+title("Combined Pre-vaccine SIRDVB Model Behavior")
+
+Y1 = Y;
 % *******************************************************************
 
 
-%% Step 3: 
+%% Step 3: Parameters/Rates Calculations and Set Up: Post-vaccine
+
+%%%
+% *******************************************************************
+% Phase 2: Post-vaccination
+recTime2 = 2;  % Ave. recovery period of 2 weeks, considering vaccinated
+totalRecoveries2 = zeros(1, size(days2, 2));
+for i = recTime2+1:size(days2, 2)
+    totalRecoveries2(i) = totalRecoveries2(i-1) + newInfectionsSmooth(i-recTime2) - newDeaths(i-recTime2);
+end
+newRecoveries2 = zeros(1, size(days2, 2));
+for i = 2:size(days2, 2)
+    newRecoveries2(i) = totalRecoveries2(i) - totalRecoveries2(i-1);
+end
+sPop2 = 1 - cumulativeInfections(days2);
+iPop2 = cumulativeInfections(days2) - cumulativeDeathsSmooth(days2) - totalRecoveries2;
+
+V = 0.0025; % From research: around 60% of the US population received a shot
+            % by ~260 days after the vaccine first being available
+B = 0.0002; % Based on ~50% decreased effectiveness after a month
+
+I = mean(newInfectionsSmooth(days2)./sPop2)-V;  % Manual adjustment
+R = mean(newRecoveries2./iPop2);
+    reinRatio = 2.34;   % Likelihood 
+    Rn = R/reinRatio;   
+    Ry = R-Rn;
+D = mean(newDeaths(days2)./iPop2);
+
+S = 1 - I - R - D - V - B;
+
+% Set up initial values 
+Si = Y(1, end);
+Ii = Y(2, end);
+Ri = Y(3, end);
+Di = Y(4, end);
+Vi = Y(5, end);
+Bi = Y(6, end);
+
+Xinit = [Si Ii Ri Di Vi Bi];
+
+% Natural evolution matrix set up (V and B states are inactive)
+A = [1-I-V   Rn     0     0     0     0;     % Susceptible Population
+       I    1-R-D   0     0     0     B      % Infected Population
+       0     Ry    1-V    0     0     0      % Recovered Population
+       0      D     0     1     0     0      % Deceased Population
+       V      0     V     0    1-B    0      % Vaccinated Population
+       0      0     0     0     B    1-B];  % Breakthrough Infected Population
+
+% Other lsim set up
+Bsim = zeros(6, 1);
+Iden = eye(6);
+% lsim set up and execution
+Dsim = ss(A, Bsim, Iden, Bsim, 1);
+Y = lsim(Dsim, zeros(size(days2, 2), 1), days2, Xinit)';
+
+figure;
+hold on;
+plot(days2, Y(2, :), "Color", 'red');
+plot(days2, Y(4, :), "Color", 'black');
+plot(days2, Y(5, :), "Color", 'green');
+plot(days2, Y(6, :), "Color", 'magenta');
+plot(days2, newInfectionsSmooth(days2), "LineStyle", ":");
+plot(days2, cumulativeDeathsSmooth(days2), "LineStyle", ":");
+legend('I', 'D', 'V', 'B', 'Measured I', 'Measured D');
+title("Post-vaccine SIRDBV Model Behavior: I, D, V, B States")
+
+Y2 = Y;
+% *******************************************************************
+
+
+%% Step 4: Additional Visuals and Analysis
+
+%%%
+% *******************************************************************
+Ytotal = [Y1, Y2(:, 2:end)];
+% Plots I, D, V, B, newInfectionsSmooth, and cumulativeDeathsSmooth curves
+figure;
+hold on;
+plot(days, Ytotal(2, :), "Color", 'red');
+plot(days, Ytotal(4, :), "Color", 'black');
+plot(days, Ytotal(5, :), "Color", 'green', "LineWidth", 1);
+plot(days, Ytotal(6, :), "Color", 'magenta', "LineWidth", 1);
+plot(days, newInfectionsSmooth, "Color", '#06402B', "LineStyle", ':');
+plot(days, cumulativeDeathsSmooth, "Color", '#06402B', "LineStyle", ':');
+legend('I', 'D', 'V', 'B', 'Measured Infections', 'Measured Deaths');
+title('Enhanced SIRDVB Model For COVID Cases, Deaths, Vaccinations, and Breakthrough Infections')
+% *******************************************************************
