@@ -236,7 +236,7 @@ iPop2 = cases_STL(timeDelta) - deaths_STL(timeDelta) - totalRecovered2;
 % Note: manual adjustment made to the I, D variable to increase model accuracy
 Id = mean(weeklyNewCases(timeDelta)./sPop2) + 0.0003;
 Rd = mean(weeklyRecovered2./iPop2) + 0.0025;
-Dd = mean(weeklyNewDeaths(timeDelta)/iPop2) + 0.0001;
+Dd = mean(weeklyNewDeaths(timeDelta)./iPop2) + 0.0001;
 Sd = 1-Id-Rd-Dd;
 
 % Initial values based on the final state vector of the previous phase
@@ -306,9 +306,9 @@ YoTotal = zeros(4, size(timeOmicron, 2));
 % Subphase A:
 % SIRD parameters
 % Note: manual adjustment made to I, R, D variables to increase model accuracy 
-Io = mean(weeklyNewCases(timeOmicronA)/sPop3(timeAIndex)) + 0.0003;
-Ro = mean(weeklyRecovered3(timeAIndex)/iPop3(timeAIndex)) + 0.003;
-Do = mean(weeklyNewDeaths(timeOmicronA)/iPop3(timeAIndex)) + 0.0003;
+Io = mean(weeklyNewCases(timeOmicronA)./sPop3(timeAIndex)) + 0.0003;
+Ro = mean(weeklyRecovered3(timeAIndex)./iPop3(timeAIndex)) + 0.003;
+Do = mean(weeklyNewDeaths(timeOmicronA)./iPop3(timeAIndex)) + 0.0003;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -342,9 +342,9 @@ YoTotal(:, timeAIndex) = Yo;
 % Subphase B:
 % SIRD parameters
 % Note: manually adjusted I, D variable to more accurately model data
-Io = mean(weeklyNewCases(timeOmicronB)/sPop3(timeBIndex)) + 0.001;
-Ro = mean(weeklyRecovered3(timeBIndex)/iPop3(timeBIndex));
-Do = mean(weeklyNewDeaths(timeOmicronB)/iPop3(timeBIndex)) + 0.001;
+Io = mean(weeklyNewCases(timeOmicronB)./sPop3(timeBIndex)) + 0.001;
+Ro = mean(weeklyRecovered3(timeBIndex)./iPop3(timeBIndex));
+Do = mean(weeklyNewDeaths(timeOmicronB)./iPop3(timeBIndex)) + 0.001;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -378,9 +378,9 @@ YoTotal(:, timeBIndex) = Yo;
 % Subphase C:
 % SIRD parameters
 % Note: manually adjusted I, D variables to more accurately model data
-Io = mean(weeklyNewCases(timeOmicronC)/sPop3(timeCIndex)) + 0.001;
-Ro = mean(weeklyRecovered3(timeCIndex)/iPop3(timeCIndex));
-Do = mean(weeklyNewDeaths(timeOmicronC)/iPop3(timeCIndex)) + 0.0003;
+Io = mean(weeklyNewCases(timeOmicronC)./sPop3(timeCIndex)) + 0.001;
+Ro = mean(weeklyRecovered3(timeCIndex)./iPop3(timeCIndex));
+Do = mean(weeklyNewDeaths(timeOmicronC)./iPop3(timeCIndex)) + 0.0003;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -414,9 +414,9 @@ YoTotal(:, timeCIndex) = Yo;
 % Subphase D:
 % SIRD parameters
 % Note: manually adjusted I variables to more accurately model data
-Io = mean(weeklyNewCases(timeOmicronD)/sPop3(timeDIndex)) - 0.001;
-Ro = mean(weeklyRecovered3(timeDIndex)/iPop3(timeDIndex));
-Do = mean(weeklyNewDeaths(timeOmicronD)/iPop3(timeDIndex)) + 0.0002;
+Io = mean(weeklyNewCases(timeOmicronD)./sPop3(timeDIndex)) - 0.001;
+Ro = mean(weeklyRecovered3(timeDIndex)./iPop3(timeDIndex));
+Do = mean(weeklyNewDeaths(timeOmicronD)./iPop3(timeDIndex)) + 0.0002;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -483,9 +483,9 @@ sPop4 = POP_STL_adjusted(timeRemain) - cases_STL(timeRemain);
 % Infected population:
 iPop4 = cases_STL(timeRemain) - deaths_STL(timeRemain) - totalRecovered4;
 
-Ir = mean(weeklyNewCases(timeRemain)/sPop4);
-Rr = mean(weeklyRecovered4/iPop4); 
-Dr = mean(weeklyNewDeaths(timeRemain)/iPop4);
+Ir = mean(weeklyNewCases(timeRemain)./sPop4);
+Rr = mean(weeklyRecovered4./iPop4); 
+Dr = mean(weeklyNewDeaths(timeRemain)./iPop4);
 Sr = 1-Ir-Rr-Dr;
 
 % Initial values based on the final state vector of the previous phase
@@ -602,10 +602,10 @@ disp("Error Between Model and Actual Cumulative Cases: " + (error*100) + "%");
 % Policy: Effective 10/20/2021...
 %  *Enforced mask mandate w/ major budget increase allocated towards 
 %   supplying healthcare resources and facilities
-%   - Quaratine/curfew --> 6.85% decreased infection rates (I)
+%   - Quaratine/curfew --> 7.02% decreased infection rates (I)
 %   - More healthcare --> 25% increased successful recovery rate (R)
 %       -  More resources --> 10% decreased fatality rate (D)
-Ipol = 0.9315;
+Ipol = 0.9298;
 Rpol = 1.25;
 Dpol = 0.75;
 
@@ -616,9 +616,9 @@ Dpol = 0.75;
 % Subphase A:
 % SIRD parameters
 % Note: manual adjustment made to I, R, D variables to increase model accuracy 
-Io = (mean(weeklyNewCases(timeOmicronA)/sPop3(timeAIndex)) + 0.0003)*Ipol;
-Ro = (mean(weeklyRecovered3(timeAIndex)/iPop3(timeAIndex)) + 0.003)*Rpol;
-Do = (mean(weeklyNewDeaths(timeOmicronA)/iPop3(timeAIndex)) + 0.0003)*Dpol;
+Io = (mean(weeklyNewCases(timeOmicronA)./sPop3(timeAIndex)) + 0.0003)*Ipol;
+Ro = (mean(weeklyRecovered3(timeAIndex)./iPop3(timeAIndex)) + 0.003)*Rpol;
+Do = (mean(weeklyNewDeaths(timeOmicronA)./iPop3(timeAIndex)) + 0.0003)*Dpol;
 So = 1-Io-Ro-Do;
 % Initial values based on the final state vector of the previous phase
 SoInit = Yd(1, size(Yd, 2)); 
@@ -651,9 +651,9 @@ YoTotal(:, timeAIndex) = Yo;
 % Subphase B:
 % SIRD parameters
 % Note: manually adjusted I, D variable to more accurately model data
-Io = (mean(weeklyNewCases(timeOmicronB)/sPop3(timeBIndex)) + 0.001)*Ipol;
-Ro = mean(weeklyRecovered3(timeBIndex)/iPop3(timeBIndex))*Rpol;
-Do = (mean(weeklyNewDeaths(timeOmicronB)/iPop3(timeBIndex)) + 0.001)*Dpol;
+Io = (mean(weeklyNewCases(timeOmicronB)./sPop3(timeBIndex)) + 0.001)*Ipol;
+Ro = mean(weeklyRecovered3(timeBIndex)./iPop3(timeBIndex))*Rpol;
+Do = (mean(weeklyNewDeaths(timeOmicronB)./iPop3(timeBIndex)) + 0.001)*Dpol;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -687,9 +687,9 @@ YoTotal(:, timeBIndex) = Yo;
 % Subphase C:
 % SIRD parameters
 % Note: manually adjusted I variables to more accurately model data
-Io = (mean(weeklyNewCases(timeOmicronC)/sPop3(timeCIndex)) + 0.001)*Ipol;
-Ro = mean(weeklyRecovered3(timeCIndex)/iPop3(timeCIndex))*Rpol;
-Do = (mean(weeklyNewDeaths(timeOmicronC)/iPop3(timeCIndex))+0.0003)*Dpol;
+Io = (mean(weeklyNewCases(timeOmicronC)./sPop3(timeCIndex)) + 0.001)*Ipol;
+Ro = mean(weeklyRecovered3(timeCIndex)./iPop3(timeCIndex))*Rpol;
+Do = (mean(weeklyNewDeaths(timeOmicronC)./iPop3(timeCIndex))+0.0003)*Dpol;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -723,9 +723,9 @@ YoTotal(:, timeCIndex) = Yo;
 % Subphase D:
 % SIRD parameters
 % Note: manually adjusted I variables to more accurately model data
-Io = (mean(weeklyNewCases(timeOmicronD)/sPop3(timeDIndex)) - 0.001)*Ipol;
-Ro = mean(weeklyRecovered3(timeDIndex)/iPop3(timeDIndex))*Rpol;
-Do = (mean(weeklyNewDeaths(timeOmicronD)/iPop3(timeDIndex))+0.0002)*Dpol;
+Io = (mean(weeklyNewCases(timeOmicronD)./sPop3(timeDIndex)) - 0.001)*Ipol;
+Ro = mean(weeklyRecovered3(timeDIndex)./iPop3(timeDIndex))*Rpol;
+Do = (mean(weeklyNewDeaths(timeOmicronD)./iPop3(timeDIndex))+0.0002)*Dpol;
 So = 1-Io-Ro-Do;
 
 % Initial values based on the final state vector of the previous phase
@@ -811,7 +811,7 @@ disp("Policy reduced cases by " + casesReduc*100 + "%");
 % Analysis of Policy: 
 % *******************************************************************
 % After trying out various different combinations, we settled on a policy 
-% that reduced the infection rate parameter by 6.85%, increased the recovery
+% that reduced the infection rate parameter by 7.02%, increased the recovery
 % rate parameter by 25%, and decreased the fatality rate parameter by 25%.
 % This combinationed yielded an approximate 25% reduction in both weekly
 % new cases and weekly new deaths, satisfying the goal of an overall 25%
