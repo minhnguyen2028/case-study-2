@@ -591,23 +591,19 @@ disp("Error Between Model and Actual Cumulative Cases: " + (error*100) + "%");
 
 %%% 
 % *******************************************************************
-% Note: it is impossible to achieve a 25% reduced final cumulative death
-% count by the end of the Omicron phase, due to the fact that the target
-% cumulative count (3036 deaths) is lower than the starting cumulative
-% count 3136; as such, achieving a 25% reduction would require the D curve
-% to have a negative slope, which is impossible (as deceased individuals 
-% can't come back to life). As such, the goal will be to reduce the 
-% number of weekly new cases and deaths by an average of 25%
+% Calculate total cumulative new deaths/cases during Omicron phase
+totalOriginalDeaths = deaths_STL(timeOmicron(end))-deaths_STL(timeOmicron(1));
+totalOriginalCases = cases_STL(timeOmicron(end))-cases_STL(timeOmicron(1));
 
 % Policy: Effective 10/20/2021...
 %  *Enforced mask mandate w/ major budget increase allocated towards 
 %   supplying healthcare resources and facilities
-%   - Quaratine/curfew --> 7.02% decreased infection rates (I)
-%   - More healthcare --> 25% increased successful recovery rate (R)
-%       -  More resources --> 10% decreased fatality rate (D)
-Ipol = 0.9298;
-Rpol = 1.25;
-Dpol = 0.75;
+%   - Quaratine/curfew --> 27.5% decreased infection rates (I)
+%   - More healthcare --> 20% increased successful recovery rate (R)
+%       -  More resources --> 5% decreased fatality rate (D)
+Ipol = 0.725;
+Rpol = 1.2;
+Dpol = 0.95;
 
 % Implementation (same code as above):
 
@@ -757,17 +753,8 @@ cum_o_total(timeDIndex) = cum_o;
 cum_o = cum_o_total.*POP_STL_adjusted(timeOmicron);
 YoTotal(:, timeDIndex) = Yo;
 Yo = YoTotal.*POP_STL_adjusted(timeOmicron);
-totalDeaths = Yo(4, :);
-weeklyNewCasesPolicy = zeros(1, size(timeOmicron, 2));
-weeklyNewCasesPolicy(1) = weeklyNewCases(timeOmicron(1));
-for i = 2:size(timeOmicron, 2)
-    weeklyNewCasesPolicy(i) = cum_o(i) - cum_o(i-1);
-end
-weeklyNewDeathsPolicy = zeros(1, size(timeOmicron, 2));
-weeklyNewDeathsPolicy(1) = weeklyNewDeaths(timeOmicron(1)); 
-for i = 2:size(timeOmicron, 2)
-    weeklyNewDeathsPolicy(i) = totalDeaths(i) - totalDeaths(i-1);
-end
+totalPolicyDeaths = Yo(4, end)-Yo(4, 1);
+totalPolicyCases = cum_o(end) - cum_o(1);
 
 % Compare actual cumulative cases/deaths plot with design outcomes
 figure;
@@ -777,45 +764,31 @@ plot(timeOmicronWeeks, cum_o, "Color", '#8B0000', "LineWidth", 1);
 xlabel("Time");
 ylabel("Total Cases");
 title("Cumulative Omicron Cases: Actual vs Policy");
+legend('Actual Cases', 'Policy Cases')
 figure;
 hold on;
 plot(timeOmicronWeeks, deaths_STL(timeOmicron), "Color", 'blue', "LineStyle", ':');
-plot(timeOmicronWeeks, totalDeaths, "Color", '#00008B', "LineWidth", 1);
+plot(timeOmicronWeeks, Yo(4, :), "Color", '#00008B', "LineWidth", 1);
 xlabel("Time");
 ylabel("Total Deaths");
 title("Cumulative Omicron Deaths: Actual vs Policy");
-
-% Compare actual new weekly cases/deaths data with design outcomes
-figure;
-hold on;
-plot(timeOmicronWeeks, weeklyNewCases(timeOmicron), "Color", 'red', "LineStyle", ':');
-plot(timeOmicronWeeks, weeklyNewCasesPolicy, "Color", '#8B0000', "LineWidth", 1);
-xlabel("Time");
-ylabel("New Cases");
-title("Weekly Cases During Omicron Phase: Actual vs Policy");
-figure;
-hold on;
-plot(timeOmicronWeeks, weeklyNewDeaths(timeOmicron), "Color", 'blue', "LineStyle", ':');
-plot(timeOmicronWeeks, weeklyNewDeathsPolicy, "Color", '#00008B', "LineWidth", 1);
-xlabel("Time");
-ylabel("New Deaths");
-title("Weekly Deaths During Omicron Phase: Actual vs Policy");
+legend('Actual Deaths', 'Policy Deaths')
 
 % Determine average reduction percentage
-deathsReduc = mean((weeklyNewDeaths(timeOmicron)-weeklyNewDeathsPolicy)./weeklyNewDeaths(timeOmicron));
-casesReduc = mean((weeklyNewCases(timeOmicron)-weeklyNewCasesPolicy)./weeklyNewDeaths(timeOmicron));
-disp("Policy reduced deaths by " + deathsReduc*100 + "%");
-disp("Policy reduced cases by " + casesReduc*100 + "%");
+deathsReduc = (totalOriginalDeaths - totalPolicyDeaths)/totalOriginalDeaths;
+casesReduc = (totalOriginalCases - totalPolicyCases)/totalOriginalCases;
+disp("Policy reduced cumulative deaths by " + deathsReduc*100 + "%");
+disp("Policy reduced cumulative cases by " + casesReduc*100 + "%");
 % *******************************************************************
 
 % Analysis of Policy: 
 % *******************************************************************
 % After trying out various different combinations, we settled on a policy 
-% that reduced the infection rate parameter by 7.02%, increased the recovery
-% rate parameter by 25%, and decreased the fatality rate parameter by 25%.
-% This combinationed yielded an approximate 25% reduction in both weekly
-% new cases and weekly new deaths, satisfying the goal of an overall 25%
-% reduction in cases and deaths during the Omnicron phase. To provide
+% that reduced the infection rate parameter by 27.5%, increased the recovery
+% rate parameter by 20%, and decreased the fatality rate parameter by 5%.
+% This combinationed yielded an approximate 25% reduction in both cumulative
+% new cases and new deaths during the omicron phase, satisfying the 25%
+% reduction in cases and deaths during the Omnicron phase goal. To provide
 % some context, we created a scenario where these changes may have been
 % possible, settling on a combination of an enforced mask mandate
 % along with a county-wide budget increase for healthcare
@@ -829,13 +802,15 @@ disp("Policy reduced cases by " + casesReduc*100 + "%");
 % funds from the federal government (including St. Louis) during this 
 % time; thus, there shouldn't be any major concerns or financial strain to
 % implement better, more stocked healthcare facilities. Additionally,
-% enforcing a mask mandate would also be very financially friendly; 
+% enforcing a mask mandate would be very financially friendly; 
 % however, whether people participate or not would play a major role, as a
 % mask mandate would only be effective if most or all of the population
 % follows it. Assuming that most do, however, a mask mandate would and has
-% been proven to be effective, being able to reduce transmission rate by
-% well over 6.85%. As such, our implemented policy seems plausible and,
-% based on our constructed model, would achieve the goal of a 25% reduction
-% in cases and deaths (assuming we are referring to weekly new cases and
-% deaths) during the Omicron phase. 
+% been proven to be effective. However, to ensure a 25% reduction, the 
+% infection reduction rate had to be set rather high compared to the other 
+% rates, which may be realistically unfeasible, as achieving such a high
+% change would prove difficult; usually, such changes only range in the 
+% 10-20% range. Considering everything, our implemented policy seems mostly
+% plausible and, based on our constructed model, would achieve the goal of 
+% a 25% reduction in cases and deaths by the end of the Omicron phase
 % *******************************************************************
